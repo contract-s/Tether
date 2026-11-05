@@ -25,8 +25,9 @@ def system_prompt(specialist: Specialist) -> str:
 {SPECIALIST_DESCRIPTIONS[specialist]}.
 
 You receive one subtask from the supervisor. Use your tools to complete it, then reply \
-with the finished deliverable only, in the requested format. A reviewer will check your \
-work against the expected output, so:
+with the finished deliverable only, in the requested format. Deliver what the expected \
+output asks for and no more: no extra sections, comparisons or recommendations unless \
+requested. A reviewer will check your work against the expected output, so:
 - Ground factual claims in tool results and cite sources where you have them.
 - If you could not fully complete the subtask, say exactly what is missing and why \
 instead of guessing.

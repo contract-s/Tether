@@ -121,8 +121,10 @@ def test_feedback_and_dependency_outputs_reach_the_prompt() -> None:
     assert "earlier result" in prompt and "cite sources" in prompt
 
 
-def verdict(approved: bool, score: float) -> ReviewVerdict:
-    return ReviewVerdict(subtask_id="?", approved=approved, quality_score=score, feedback="f")
+def verdict(approved: bool, score: float, suggestions: list[str] | None = None) -> ReviewVerdict:
+    return ReviewVerdict(subtask_id="?", approved=approved, quality_score=score,
+                         blocking_issues=[] if approved else ["wrong number"],
+                         suggestions=suggestions or [])
 
 
 def test_reviewer_passes_only_above_threshold() -> None:
@@ -150,3 +152,37 @@ def test_reviewer_sees_tool_evidence() -> None:
     run = SpecialistAgent(Specialist.ANALYSIS, llm, make_registry()).run(SUBTASK)
     Reviewer(llm, 0.7).review(SUBTASK, run.result, evidence=run.tool_calls)
     assert "<tool_evidence>" in llm.prompt and '"total": 5' in llm.prompt
+
+
+def test_blocking_issues_decide_not_the_approved_flag() -> None:
+    ok = SubtaskResult(subtask_id="t1", output="5", succeeded=True)
+    inconsistent = ReviewVerdict(subtask_id="t1", approved=True, quality_score=0.9,
+                                 blocking_issues=["sum is wrong"], suggestions=[])
+    out = Reviewer(ScriptedLLM(verdict=inconsistent), 0.7).review(SUBTASK, ok)
+    assert not out.passed and out.verdict.feedback == "- sum is wrong"
+
+
+def test_suggestions_alone_do_not_block() -> None:
+    ok = SubtaskResult(subtask_id="t1", output="5", succeeded=True)
+    v = verdict(True, 0.8, suggestions=["shorter please"])
+    assert Reviewer(ScriptedLLM(verdict=v), 0.7).review(SUBTASK, ok).passed
+
+
+def test_reviewer_evidence_matches_what_the_specialist_saw() -> None:
+    from datetime import UTC, datetime
+
+    from agentorch.agents import reviewer as rv
+    from agentorch.tools.registry import ToolCallRecord
+
+    def record(size: int) -> ToolCallRecord:
+        return ToolCallRecord(
+            id="x", tool="file_read", caller=Specialist.RESEARCH, input={},
+            output={"content": "a" * size}, error=None, success=True, sensitive=False,
+            latency_ms=1.0, started_at=datetime.now(UTC),
+        )
+
+    # A 20k-char result reaches the reviewer whole (the old 4k cut hid most of it).
+    assert "[truncated" not in rv._format_evidence([record(20_000)])
+    # Past the total cap, the reviewer is told not to block on what it can't see.
+    many = rv._format_evidence([record(25_000) for _ in range(10)])
+    assert rv.EVIDENCE_CUT_NOTE in many

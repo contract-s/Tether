@@ -8,6 +8,7 @@ pause sensitive calls for human approval.
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from collections import defaultdict, deque
@@ -104,6 +105,7 @@ class ToolRegistry:
         self.log = log or InMemoryToolCallLog()
         self._clock = clock
         self._recent_calls: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
 
     def register(self, tool: Tool) -> Tool:
         if tool.name in self._tools:
@@ -183,6 +185,12 @@ class ToolRegistry:
     def _check_rate_limit(self, tool: Tool) -> None:
         if tool.rate_limit is None:
             return
+        # Specialists run in parallel threads, so the window check must be atomic.
+        with self._lock:
+            self._check_rate_limit_locked(tool)
+
+    def _check_rate_limit_locked(self, tool: Tool) -> None:
+        assert tool.rate_limit is not None
         now = self._clock()
         window = self._recent_calls[tool.name]
         while window and now - window[0] >= tool.rate_limit.per_seconds:

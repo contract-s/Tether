@@ -52,6 +52,19 @@ class SubtaskResult(BaseModel):
 
 class ReviewVerdict(BaseModel):
     subtask_id: str
-    approved: bool
+    blocking_issues: list[str] = Field(
+        description="Problems that make the output unusable: wrong or unsupported facts, "
+        "missing required parts, wrong format. Empty if none."
+    )
+    suggestions: list[str] = Field(
+        description="Optional polish (style, brevity, extra detail). Never blocks approval."
+    )
     quality_score: float = Field(description="0.0-1.0")
-    feedback: str = Field(description="What to fix if not approved")
+    approved: bool = Field(description="True exactly when blocking_issues is empty")
+
+    @property
+    def feedback(self) -> str:
+        """What the specialist should fix on a retry: blocking issues only."""
+        if self.blocking_issues:
+            return "\n".join(f"- {i}" for i in self.blocking_issues)
+        return "\n".join(f"- (optional) {s}" for s in self.suggestions)

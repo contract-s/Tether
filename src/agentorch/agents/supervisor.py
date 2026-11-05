@@ -32,6 +32,16 @@ you don't have.
 - If past tasks are provided, reuse approaches that worked and avoid ones that failed."""
 
 
+SYNTHESIS_PROMPT = """You are the supervisor delivering the final result to the user. \
+Your specialists have completed and reviewed their subtasks. Combine their outputs into \
+one deliverable that answers the original request.
+
+- The user only sees your answer, not the subtask outputs, so include everything they need.
+- Keep sources and caveats the specialists reported. Do not add facts that aren't in \
+their outputs.
+- If any subtasks are listed as missing, say plainly what couldn't be completed."""
+
+
 @dataclass
 class PlanningResult:
     plan: ExecutionPlan
@@ -68,6 +78,24 @@ class Supervisor:
         raise InvalidPlanError(
             f"no valid plan after {self.max_attempts} attempts: {last_error}"
         )
+
+    def synthesize(
+        self, task: str, plan: ExecutionPlan, outputs: dict[str, str]
+    ) -> tuple[str, LLMUsage]:
+        """Combine the approved subtask outputs into the final deliverable."""
+        parts = [f"<request>\n{task}\n</request>"]
+        for st in plan.subtasks:
+            if st.id in outputs:
+                parts.append(
+                    f"<subtask_output id=\"{st.id}\" specialist=\"{st.specialist.value}\">\n"
+                    f"{st.description}\n---\n{outputs[st.id]}\n</subtask_output>"
+                )
+        missing = [st.id for st in plan.subtasks if st.id not in outputs]
+        if missing:
+            parts.append(f"<missing_subtasks>{', '.join(missing)}</missing_subtasks>")
+        messages = [{"role": "user", "content": "\n\n".join(parts)}]
+        turn = self.llm.chat("supervisor", SYNTHESIS_PROMPT, messages, [])
+        return turn.text.strip(), turn.usage
 
     @staticmethod
     def _build_prompt(task: str, memories: list[str]) -> str:

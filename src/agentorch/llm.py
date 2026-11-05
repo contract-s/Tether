@@ -126,12 +126,13 @@ class AnthropicClient:
         tools: list[dict[str, Any]],
     ) -> ModelTurn:
         route = route_for(role)
+        extra: dict[str, Any] = {"tools": tools} if tools else {}
         response = self._client.beta.messages.create(
             model=route.model,
             max_tokens=16000,
             system=system,
             messages=messages,
-            tools=tools,
+            **extra,
             output_config={"effort": route.effort},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
