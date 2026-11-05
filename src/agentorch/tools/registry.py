@@ -15,17 +15,30 @@ from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
 from agentorch.agents.schemas import Specialist
+
+if TYPE_CHECKING:
+    from agentorch.memory.working import WorkingMemory
 
 
 @dataclass(frozen=True)
 class RateLimit:
     calls: int
     per_seconds: float
+
+
+@dataclass
+class ToolContext:
+    """Who is calling a tool and for which task. Passed to tools that need it."""
+
+    caller: Specialist
+    task_id: str | None = None
+    subtask_id: str | None = None
+    working_memory: WorkingMemory | None = None
 
 
 @dataclass
@@ -40,6 +53,8 @@ class Tool:
     # Returns True when a particular call needs human approval (deletion, payments,
     # sending data out). Used by the human-in-the-loop layer in Phase 3.
     is_sensitive: Callable[[Any], bool] = field(default=lambda _input: False)
+    # When True the handler is called as handler(args, ctx) with a ToolContext.
+    takes_context: bool = False
 
     def anthropic_definition(self) -> dict[str, Any]:
         return {
@@ -132,6 +147,7 @@ class ToolRegistry:
         caller: Specialist,
         raw_input: dict[str, Any],
         approved: bool = False,
+        context: ToolContext | None = None,
     ) -> ToolCallRecord:
         """Run a tool and log the call. Tool failures are captured in the record, not raised.
 
@@ -154,7 +170,10 @@ class ToolRegistry:
             if sensitive and not approved:
                 raise ApprovalRequiredError(f"{name!r} call needs human approval")
             self._check_rate_limit(tool)
-            result = tool.handler(parsed)
+            if tool.takes_context:
+                result = tool.handler(parsed, context or ToolContext(caller=caller))
+            else:
+                result = tool.handler(parsed)
             output = tool.output_model.model_validate(result).model_dump(mode="json")
         except ToolError as e:
             blocked = e

@@ -13,6 +13,7 @@ from agentorch.tools.registry import (
     ApprovalRequiredError,
     RateLimitExceededError,
     ToolCallRecord,
+    ToolContext,
     ToolError,
     ToolRegistry,
 )
@@ -63,8 +64,10 @@ class SpecialistAgent:
         subtask: Subtask,
         dependency_outputs: dict[str, str] | None = None,
         reviewer_feedback: str | None = None,
+        context: ToolContext | None = None,
     ) -> SpecialistRun:
         run = SpecialistRun(SubtaskResult(subtask_id=subtask.id, output="", succeeded=False))
+        context = context or ToolContext(caller=self.specialist, subtask_id=subtask.id)
         tools = self.registry.anthropic_tools(self.specialist)
         system = system_prompt(self.specialist)
         messages: list[dict[str, Any]] = [{
@@ -80,7 +83,7 @@ class SpecialistAgent:
 
             if turn.stop_reason == "tool_use" and turn.tool_calls:
                 # All results go back in a single user message.
-                results = [self._execute(call, run) for call in turn.tool_calls]
+                results = [self._execute(call, run, context) for call in turn.tool_calls]
                 messages.append({"role": "user", "content": results})
                 continue
             if turn.stop_reason == "pause_turn":
@@ -99,9 +102,13 @@ class SpecialistAgent:
         run.result.error = f"gave up after {self.max_turns} turns"
         return run
 
-    def _execute(self, call: ToolCall, run: SpecialistRun) -> dict[str, Any]:
+    def _execute(
+        self, call: ToolCall, run: SpecialistRun, context: ToolContext
+    ) -> dict[str, Any]:
         try:
-            record = self.registry.invoke(call.name, self.specialist, call.input)
+            record = self.registry.invoke(
+                call.name, self.specialist, call.input, context=context
+            )
         except ApprovalRequiredError:
             run.pending_approvals.append(call)
             return _tool_error(call.id, "This action needs human approval and was not run.")

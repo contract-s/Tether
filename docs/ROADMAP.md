@@ -7,9 +7,9 @@
 - [x] LangGraph state machine: intake → plan → execute → review → synthesize → deliver, with retry, reject-loop and escalation edges
 
 ## Phase 2: Memory (Days 4-7)
-- [ ] Short-term working memory in Redis, scoped to a single task
-- [ ] Long-term semantic memory in ChromaDB, extracted after each task
-- [ ] Memory retrieval injected into planning
+- [x] Short-term working memory in Redis, scoped to a single task
+- [x] Long-term semantic memory in ChromaDB, extracted after each task
+- [x] Memory retrieval injected into planning
 - [ ] Memory management: importance scoring, consolidation, decay, dashboard, delete endpoint
 
 ## Phase 3: Human-in-the-loop (Days 7-10)

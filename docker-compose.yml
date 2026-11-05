@@ -19,9 +19,9 @@ services:
     ports: ["6379:6379"]
 
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.9 # keep in step with the chromadb client in uv.lock
     ports: ["8001:8000"]
-    volumes: [chromadata:/chroma/chroma]
+    volumes: [chromadata:/data]
 
   jaeger:
     # Trace viewer for OpenTelemetry spans until the custom trace explorer exists

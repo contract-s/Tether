@@ -114,10 +114,11 @@ def test_strict_schema_closes_objects_and_requires_all_fields() -> None:
 def test_default_registry_access_map() -> None:
     registry = build_default_registry()
     names = lambda s: {t.name for t in registry.for_specialist(s)}  # noqa: E731
-    assert names(S.RESEARCH) == {"web_search", "http_request", "file_read"}
-    assert names(S.WRITING) == {"file_read", "file_write"}
-    assert names(S.ANALYSIS) == {"file_read", "file_write", "code_exec", "db_query"}
-    assert names(S.CODE) == {"http_request", "file_read", "file_write", "code_exec"}
+    shared = {"file_read", "notes_read", "notes_write"}
+    assert names(S.RESEARCH) == shared | {"web_search", "http_request"}
+    assert names(S.WRITING) == shared | {"file_write"}
+    assert names(S.ANALYSIS) == shared | {"file_write", "code_exec", "db_query"}
+    assert names(S.CODE) == shared | {"http_request", "file_write", "code_exec"}
     for definition in [d for s in S for d in registry.anthropic_tools(s)]:
         assert definition["strict"] is True
         assert definition["input_schema"]["additionalProperties"] is False

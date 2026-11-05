@@ -10,6 +10,11 @@
 reviewer rejected (with its feedback), and escalates a subtask to a human once it has
 used up its attempts. Human steps use LangGraph's `interrupt`, so the run pauses, is
 checkpointed, and resumes with `Command(resume=...)`.
+
+Memory: `plan` retrieves similar past memories for the user and gives them to the
+supervisor; `work` shares a per-task Redis working memory (results, errors, notes board);
+`deliver` distills the finished task into long-term memories and clears working memory.
+Memory failures are recorded but never fail the task.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -33,7 +39,9 @@ from agentorch.agents.specialist import SpecialistAgent
 from agentorch.agents.supervisor import Supervisor
 from agentorch.config import settings
 from agentorch.llm import LLMUsage
-from agentorch.tools.registry import ToolCallRecord
+from agentorch.memory.long_term import StoredMemory
+from agentorch.memory.service import MemoryServices
+from agentorch.tools.registry import ToolCallRecord, ToolContext
 
 
 def merge(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
@@ -58,7 +66,12 @@ class PendingApproval(BaseModel):
 
 class WorkflowState(TypedDict, total=False):
     task: str
-    memories: list[str]
+    task_id: str
+    user_id: str
+    memories: list[str]  # extra context supplied by the caller
+    memories_used: list[StoredMemory]  # retrieved from long-term memory for planning
+    memories_saved: list[str]  # ids of memories written after the task
+    memory_errors: Annotated[list[str], operator.add]
     status: Literal["running", "awaiting_human", "done", "failed", "rejected"]
     error: str | None
 
@@ -88,6 +101,7 @@ class Agents:
     supervisor: Supervisor
     reviewer: Reviewer
     make_specialist: Callable[[Specialist], SpecialistAgent]
+    memory: MemoryServices | None = None
 
 
 def build_workflow(
@@ -100,18 +114,39 @@ def build_workflow(
 
     # --- nodes ---------------------------------------------------------------
 
-    def intake(state: WorkflowState) -> dict[str, Any]:
+    memory = agents.memory or MemoryServices()
+
+    def intake(state: WorkflowState, config: RunnableConfig) -> dict[str, Any]:
         task = state.get("task", "").strip()
         if not task:
             return {"status": "failed", "error": "empty task"}
-        return {"task": task, "status": "running", "error": None}
+        return {
+            "task": task,
+            "task_id": config["configurable"]["thread_id"],
+            "user_id": state.get("user_id") or "default",
+            "status": "running",
+            "error": None,
+        }
 
     def plan(state: WorkflowState) -> dict[str, Any]:
+        update: dict[str, Any] = {}
+        retrieved: list[StoredMemory] = []
         try:
-            result = agents.supervisor.plan(state["task"], state.get("memories", []))
+            retrieved = memory.retrieve(state["user_id"], state["task"])
+        except Exception as e:  # noqa: BLE001 - memory is best-effort
+            update["memory_errors"] = [f"retrieve: {type(e).__name__}: {e}"]
+        context = [*state.get("memories", []), *(m.as_prompt_line() for m in retrieved)]
+        try:
+            result = agents.supervisor.plan(state["task"], context)
         except InvalidPlanError as e:
-            return {"status": "failed", "error": str(e)}
+            return {**update, "status": "failed", "error": str(e)}
+        wm = memory.working_for(state["task_id"])
+        if wm:
+            _best_effort(update, "working.set_plan",
+                         lambda: wm.set_plan(result.plan.model_dump(mode="json")))
         return {
+            **update,
+            "memories_used": retrieved,
             "plan": result.plan,
             "batches": [[st.id for st in batch] for batch in result.batches],
             "batch_index": 0,
@@ -149,11 +184,14 @@ def build_workflow(
     def work(payload: dict[str, Any]) -> dict[str, Any]:
         """Run one attempt of one subtask: specialist, then reviewer."""
         subtask = payload["subtask"]
+        wm = memory.working_for(payload["task_id"])
         specialist = agents.make_specialist(subtask.specialist)
         run = specialist.run(
             subtask,
             dependency_outputs=payload["dependency_outputs"],
             reviewer_feedback=payload["feedback"],
+            context=ToolContext(caller=subtask.specialist, task_id=payload["task_id"],
+                                subtask_id=subtask.id, working_memory=wm),
         )
         review = agents.reviewer.review(
             subtask, run.result, evidence=run.tool_calls,
@@ -173,6 +211,13 @@ def build_workflow(
         }
         if review.passed:
             update["accepted"] = {subtask.id: "reviewer"}
+        if wm:
+            if review.passed:
+                _best_effort(update, "working.record_result",
+                             lambda: wm.record_result(subtask.id, run.result.output))
+            else:
+                _best_effort(update, "working.log_error", lambda: wm.log_error(
+                    f"{subtask.id}#{payload['attempt']}", review.verdict.feedback))
         return update
 
     def human_subtask(state: WorkflowState) -> dict[str, Any]:
@@ -216,8 +261,18 @@ def build_workflow(
         return {"final_output": final, "usage": [usage]}
 
     def deliver(state: WorkflowState) -> dict[str, Any]:
-        # Phase 2: save lessons from this task to long-term memory here.
-        return {"status": "done"}
+        update: dict[str, Any] = {"status": "done", "memories_saved": []}
+        try:
+            ids, usage = memory.remember(state["user_id"], state["task_id"], _transcript(state))
+            update["memories_saved"] = ids
+            if usage:
+                update["usage"] = [usage]
+        except Exception as e:  # noqa: BLE001 - memory is best-effort
+            update["memory_errors"] = [f"remember: {type(e).__name__}: {e}"]
+        wm = memory.working_for(state["task_id"])
+        if wm:
+            _best_effort(update, "working.clear", wm.clear)
+        return update
 
     # --- routing -------------------------------------------------------------
 
@@ -246,6 +301,7 @@ def build_workflow(
         for sid in runnable:
             subtask = _subtask(state, sid)
             sends.append(Send("work", {
+                "task_id": state["task_id"],
                 "subtask": subtask,
                 "attempt": state.get("attempts", {}).get(sid, 0) + 1,
                 "feedback": state.get("feedback", {}).get(sid),
@@ -281,6 +337,40 @@ def build_workflow(
 
 
 # --- helpers -----------------------------------------------------------------
+
+def _best_effort(update: dict[str, Any], label: str, fn: Callable[[], Any]) -> None:
+    try:
+        fn()
+    except Exception as e:  # noqa: BLE001 - memory is best-effort
+        update.setdefault("memory_errors", []).append(f"{label}: {type(e).__name__}: {e}")
+
+
+def _transcript(state: WorkflowState) -> str:
+    """What the memory extractor sees about a finished task."""
+    p = state["plan"]
+    lines = [f"<request>\n{state['task']}\n</request>",
+             f"<plan confidence=\"{p.confidence:.2f}\">{p.reasoning}</plan>", "<subtasks>"]
+    for st in p.subtasks:
+        if by := state.get("accepted", {}).get(st.id):
+            status = f"accepted by {by}"
+        elif st.id in state.get("abandoned", {}):
+            status = "abandoned"
+        else:
+            status = "not completed"
+        lines.append(f"- {st.id} [{st.specialist.value}] {st.description} | {status}, "
+                     f"attempts {state.get('attempts', {}).get(st.id, 0)}")
+        if (v := state.get("reviews", {}).get(st.id)) and v.blocking_issues:
+            lines.append(f"  last review issues: {'; '.join(v.blocking_issues)[:600]}")
+    lines.append("</subtasks>")
+    used = sorted({r.tool for r in state.get("tool_calls", [])})
+    lines.append(f"<tools_used>{', '.join(used) or 'none'}</tools_used>")
+    for e in state.get("escalations", []):
+        lines.append(f"<escalation kind=\"{e.kind}\">{e.reason} -> human chose "
+                     f"{e.resolution}</escalation>")
+    final = state.get("final_output", "")
+    lines.append(f"<final_output>\n{final[:6000]}\n</final_output>")
+    return "\n".join(lines)
+
 
 def _resolved(state: WorkflowState, sid: str) -> bool:
     return sid in state.get("accepted", {}) or sid in state.get("abandoned", {})

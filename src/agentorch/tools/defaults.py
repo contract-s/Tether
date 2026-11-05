@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from agentorch.agents.schemas import Specialist as S
 from agentorch.config import settings
-from agentorch.tools import code_exec, db_query, files, http, web_search
+from agentorch.tools import code_exec, db_query, files, http, notes, web_search
 from agentorch.tools.registry import RateLimit, Tool, ToolCallLog, ToolRegistry
 
 
@@ -62,6 +62,27 @@ def build_default_registry(log: ToolCallLog | None = None) -> ToolRegistry:
         handler=sandbox.run,
         allowed_specialists=frozenset({S.ANALYSIS, S.CODE}),
         rate_limit=RateLimit(calls=10, per_seconds=60),
+    ))
+    registry.register(Tool(
+        name="notes_write",
+        description=(
+            "Post a finding to the shared notes board for this task, so other specialists "
+            "(including ones running in parallel) can use it."
+        ),
+        input_model=notes.NotesWriteInput,
+        output_model=notes.NotesWriteOutput,
+        handler=notes.write_note,
+        allowed_specialists=frozenset(S),
+        takes_context=True,
+    ))
+    registry.register(Tool(
+        name="notes_read",
+        description="Read the shared notes board for this task. Check it before searching.",
+        input_model=notes.NotesReadInput,
+        output_model=notes.NotesReadOutput,
+        handler=notes.read_notes,
+        allowed_specialists=frozenset(S),
+        takes_context=True,
     ))
     registry.register(Tool(
         name="db_query",

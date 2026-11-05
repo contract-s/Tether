@@ -15,6 +15,7 @@ from agentorch.graph.factory import default_workflow
 parser = argparse.ArgumentParser()
 parser.add_argument("task", nargs="+")
 parser.add_argument("--auto", action="store_true", help="resolve escalations without asking")
+parser.add_argument("--user", default="default", help="whose long-term memory to use")
 args = parser.parse_args()
 
 graph = default_workflow()
@@ -26,6 +27,10 @@ def stream(inp) -> None:
         for node, change in update.items():
             if node == "__interrupt__" or not change:
                 continue
+            if node == "plan" and change.get("memories_used"):
+                print(f"[memory] using {len(change['memories_used'])} past memories:")
+                for m in change["memories_used"]:
+                    print(f"   ({m.distance:.2f}) {m.as_prompt_line()[:110]}")
             if node == "plan" and "plan" in change:
                 p = change["plan"]
                 print(f"[plan] confidence={p.confidence:.2f}, batches={change['batches']}")
@@ -63,7 +68,7 @@ def ask(pause: dict) -> dict:
     return decision
 
 
-stream({"task": " ".join(args.task)})
+stream({"task": " ".join(args.task), "user_id": args.user})
 while (state := graph.get_state(config)).next:
     pause = state.tasks[0].interrupts[0].value
     stream(Command(resume=ask(pause)))
@@ -74,6 +79,8 @@ if final.get("error"):
     print(f"error: {final['error']}")
 if final.get("final_output"):
     print(f"\n{final['final_output']}")
+print(f"\nMemories saved: {len(final.get('memories_saved', []))}"
+      + (f", memory errors: {final['memory_errors']}" if final.get("memory_errors") else ""))
 usage = final.get("usage", [])
 tokens_in = sum(u.input_tokens for u in usage)
 tokens_out = sum(u.output_tokens for u in usage)
