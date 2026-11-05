@@ -2,8 +2,8 @@
 
 ## Phase 1: Agent architecture (Days 1-4)
 - [ ] Agent hierarchy: supervisor, specialists (research, analysis, writing, code), reviewer, each a LangGraph node with typed I/O schemas
-- [ ] Task decomposition: structured-output execution plan (subtask, specialist, inputs, output format, complexity, dependencies)
-- [ ] Tool registry: name, description, schemas, allowed agents, rate limits; web search, file I/O, sandboxed code exec, DB query, HTTP. Log every call
+- [x] Task decomposition: structured-output execution plan (subtask, specialist, inputs, output format, complexity, dependencies)
+- [x] Tool registry: name, description, schemas, allowed agents, rate limits; web search, file I/O, sandboxed code exec, DB query, HTTP. Log every call
 - [ ] LangGraph state machine: intake → plan → execute → review → synthesize → deliver, with retry, reject-loop and escalation edges
 
 ## Phase 2: Memory (Days 4-7)

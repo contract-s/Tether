@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     chroma_host: str = "localhost"
     chroma_port: int = 8001
 
+    # Tools
+    workspace_dir: str = "data/workspace"
+    sandbox_image: str = "python:3.11-slim"
+    sandbox_timeout_seconds: int = 30
+
     plan_confidence_threshold: float = 0.7
     review_quality_threshold: float = 0.7
     max_specialist_retries: int = 2

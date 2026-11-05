@@ -17,7 +17,7 @@ plan = result.plan
 
 print(f"Goal: {plan.goal}\nConfidence: {plan.confidence:.2f}\nReasoning: {plan.reasoning}\n")
 for i, batch in enumerate(result.batches, 1):
-    print(f"Batch {i} (parallel):")
+    print(f"Batch {i}" + (f" ({len(batch)} in parallel):" if len(batch) > 1 else ":"))
     for st in batch:
         deps = f" <- {', '.join(st.depends_on)}" if st.depends_on else ""
         print(f"  [{st.id}] {st.specialist.value:<8} {st.description}{deps}")
