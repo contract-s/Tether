@@ -37,7 +37,7 @@ def test_workspace_blocks_paths_outside_root(tmp_path: Path, path: str) -> None:
 def test_http_get_uses_client_and_non_get_is_sensitive() -> None:
     transport = httpx.MockTransport(lambda req: httpx.Response(200, text=f"{req.method} ok"))
     client = HttpClient(httpx.Client(transport=transport), allow_private=True)
-    args = HttpRequestInput(method="GET", url="https://example.com", headers={}, body=None)
+    args = HttpRequestInput(method="GET", url="https://example.com", headers=[], body=None)
     assert client.request(args).body == "GET ok"
     assert not is_sensitive(args)
     assert is_sensitive(args.model_copy(update={"method": "POST"}))
@@ -46,7 +46,7 @@ def test_http_get_uses_client_and_non_get_is_sensitive() -> None:
 @pytest.mark.parametrize("url", ["http://localhost:8000", "http://127.0.0.1", "file:///etc/passwd"])
 def test_http_blocks_private_and_non_http_urls(url: str) -> None:
     with pytest.raises((PermissionError, ValueError)):
-        HttpClient().request(HttpRequestInput(method="GET", url=url, headers={}, body=None))
+        HttpClient().request(HttpRequestInput(method="GET", url=url, headers=[], body=None))
 
 
 # --- db ------------------------------------------------------------------

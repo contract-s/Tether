@@ -13,10 +13,16 @@ from pydantic import BaseModel, Field
 MAX_BODY_CHARS = 50_000
 
 
+class Header(BaseModel):
+    name: str
+    value: str
+
+
 class HttpRequestInput(BaseModel):
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
     url: str = Field(description="Absolute http(s) URL")
-    headers: dict[str, str] = Field(description="Request headers; {} for none")
+    # A list rather than a dict: strict tool schemas don't allow free-form maps.
+    headers: list[Header] = Field(description="Request headers; [] for none")
     body: str | None = Field(description="Request body for POST/PUT/PATCH, else null")
 
 
@@ -51,7 +57,9 @@ class HttpClient:
         if not self._allow_private:
             _check_public_url(args.url)
         resp = self._client.request(
-            args.method, args.url, headers=args.headers, content=args.body
+            args.method, args.url,
+            headers=[(h.name, h.value) for h in args.headers],
+            content=args.body,
         )
         text = resp.text
         return HttpRequestOutput(

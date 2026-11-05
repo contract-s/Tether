@@ -1,0 +1,143 @@
+"""Specialist agents: run one subtask with Claude calling registry tools in a loop."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from typing import Any
+
+from agentorch.agents.schemas import Specialist, Subtask, SubtaskResult
+from agentorch.agents.supervisor import SPECIALIST_DESCRIPTIONS
+from agentorch.llm import LLMClient, LLMUsage, ToolCall
+from agentorch.tools.registry import (
+    ApprovalRequiredError,
+    RateLimitExceededError,
+    ToolCallRecord,
+    ToolError,
+    ToolRegistry,
+)
+
+MAX_TOOL_RESULT_CHARS = 30_000
+
+
+def system_prompt(specialist: Specialist) -> str:
+    return f"""You are the {specialist.value} specialist on a team of agents. You \
+{SPECIALIST_DESCRIPTIONS[specialist]}.
+
+You receive one subtask from the supervisor. Use your tools to complete it, then reply \
+with the finished deliverable only, in the requested format. A reviewer will check your \
+work against the expected output, so:
+- Ground factual claims in tool results and cite sources where you have them.
+- If you could not fully complete the subtask, say exactly what is missing and why \
+instead of guessing.
+- Some actions need human approval. If a tool reports that, continue without that \
+action where possible and state what was not done."""
+
+
+@dataclass
+class SpecialistRun:
+    result: SubtaskResult
+    usage: list[LLMUsage] = field(default_factory=list)
+    tool_calls: list[ToolCallRecord] = field(default_factory=list)
+    # Sensitive actions the agent wanted to take but that were held for a human.
+    pending_approvals: list[ToolCall] = field(default_factory=list)
+    turns: int = 0
+
+
+class SpecialistAgent:
+    def __init__(
+        self,
+        specialist: Specialist,
+        llm: LLMClient,
+        registry: ToolRegistry,
+        max_turns: int = 12,
+    ) -> None:
+        self.specialist = specialist
+        self.llm = llm
+        self.registry = registry
+        self.max_turns = max_turns
+
+    def run(
+        self,
+        subtask: Subtask,
+        dependency_outputs: dict[str, str] | None = None,
+        reviewer_feedback: str | None = None,
+    ) -> SpecialistRun:
+        run = SpecialistRun(SubtaskResult(subtask_id=subtask.id, output="", succeeded=False))
+        tools = self.registry.anthropic_tools(self.specialist)
+        system = system_prompt(self.specialist)
+        messages: list[dict[str, Any]] = [{
+            "role": "user",
+            "content": self._task_prompt(subtask, dependency_outputs or {}, reviewer_feedback),
+        }]
+
+        while run.turns < self.max_turns:
+            run.turns += 1
+            turn = self.llm.chat("specialist", system, messages, tools)
+            run.usage.append(turn.usage)
+            messages.append({"role": "assistant", "content": turn.content})
+
+            if turn.stop_reason == "tool_use" and turn.tool_calls:
+                # All results go back in a single user message.
+                results = [self._execute(call, run) for call in turn.tool_calls]
+                messages.append({"role": "user", "content": results})
+                continue
+            if turn.stop_reason == "pause_turn":
+                continue
+            if turn.stop_reason == "max_tokens":
+                run.result.error = "response hit max_tokens before finishing"
+                run.result.output = turn.text
+                return run
+
+            run.result.output = turn.text.strip()
+            run.result.succeeded = bool(run.result.output)
+            if not run.result.succeeded:
+                run.result.error = "agent finished without producing output"
+            return run
+
+        run.result.error = f"gave up after {self.max_turns} turns"
+        return run
+
+    def _execute(self, call: ToolCall, run: SpecialistRun) -> dict[str, Any]:
+        try:
+            record = self.registry.invoke(call.name, self.specialist, call.input)
+        except ApprovalRequiredError:
+            run.pending_approvals.append(call)
+            return _tool_error(call.id, "This action needs human approval and was not run.")
+        except RateLimitExceededError as e:
+            return _tool_error(call.id, f"Rate limited: {e}. Try again later or proceed without.")
+        except ToolError as e:
+            return _tool_error(call.id, str(e))
+
+        run.tool_calls.append(record)
+        if not record.success:
+            return _tool_error(call.id, record.error or "tool failed")
+        content = json.dumps(record.output, ensure_ascii=False)
+        if len(content) > MAX_TOOL_RESULT_CHARS:
+            content = content[:MAX_TOOL_RESULT_CHARS] + " [truncated]"
+        return {"type": "tool_result", "tool_use_id": call.id, "content": content}
+
+    @staticmethod
+    def _task_prompt(
+        subtask: Subtask, dependency_outputs: dict[str, str], feedback: str | None
+    ) -> str:
+        parts = [
+            f"<subtask id=\"{subtask.id}\">\n{subtask.description}\n</subtask>",
+            f"<expected_output>\n{subtask.expected_output}\n</expected_output>",
+        ]
+        if subtask.required_inputs:
+            joined = "\n".join(f"- {i}" for i in subtask.required_inputs)
+            parts.append(f"<required_inputs>\n{joined}\n</required_inputs>")
+        for dep_id, output in dependency_outputs.items():
+            parts.append(f"<input_from subtask=\"{dep_id}\">\n{output}\n</input_from>")
+        if feedback:
+            parts.append(
+                "<reviewer_feedback>\nA previous attempt was rejected. Fix these issues:\n"
+                f"{feedback}\n</reviewer_feedback>"
+            )
+        return "\n\n".join(parts)
+
+
+def _tool_error(tool_use_id: str, message: str) -> dict[str, Any]:
+    return {"type": "tool_result", "tool_use_id": tool_use_id, "content": message,
+            "is_error": True}

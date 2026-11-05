@@ -206,6 +206,11 @@ def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
             return
         if not isinstance(node, dict):
             return
+        if isinstance(node.get("additionalProperties"), dict):
+            raise ValueError(
+                f"{model.__name__}: free-form maps (dict fields) aren't allowed in strict "
+                "tool schemas; use a list of objects instead"
+            )
         if node.get("type") == "object" and "properties" in node:
             node["additionalProperties"] = False
             node["required"] = list(node["properties"])

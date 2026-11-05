@@ -118,6 +118,14 @@ def test_default_registry_access_map() -> None:
     assert names(S.WRITING) == {"file_read", "file_write"}
     assert names(S.ANALYSIS) == {"file_read", "file_write", "code_exec", "db_query"}
     assert names(S.CODE) == {"http_request", "file_read", "file_write", "code_exec"}
-    for definition in registry.anthropic_tools(S.ANALYSIS):
+    for definition in [d for s in S for d in registry.anthropic_tools(s)]:
         assert definition["strict"] is True
         assert definition["input_schema"]["additionalProperties"] is False
+
+
+def test_strict_schema_rejects_free_form_maps() -> None:
+    class WithMap(BaseModel):
+        headers: dict[str, str]
+
+    with pytest.raises(ValueError, match="free-form maps"):
+        strict_schema(WithMap)
