@@ -1,0 +1,35 @@
+# Infrastructure for local development. App services (API, workers, UIs)
+# get added here as they're built (Phase 6).
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: agentorch
+      POSTGRES_PASSWORD: agentorch
+      POSTGRES_DB: agentorch
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentorch"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports: ["8001:8000"]
+    volumes: [chromadata:/chroma/chroma]
+
+  jaeger:
+    # Trace viewer for OpenTelemetry spans until the custom trace explorer exists
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC
+
+volumes:
+  pgdata:
+  chromadata:
