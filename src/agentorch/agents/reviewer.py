@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from agentorch.agents.schemas import ReviewVerdict, Subtask, SubtaskResult
 from agentorch.agents.specialist import MAX_TOOL_RESULT_CHARS
 from agentorch.config import settings
 from agentorch.llm import LLMClient, LLMUsage
+from agentorch.observability.tracing import set_attributes, span
 from agentorch.tools.registry import ToolCallRecord
 
 SYSTEM_PROMPT = """You review work produced by specialist agents. Most deliverables \
@@ -50,7 +52,21 @@ class Reviewer:
         self.llm = llm
         self.threshold = settings.review_quality_threshold if threshold is None else threshold
 
-    def review(
+    def review(self, subtask: Subtask, result: SubtaskResult, **kwargs: Any) -> ReviewOutcome:
+        """Review a deliverable (see `_review`), traced as one `reviewer.review` span."""
+        with span("reviewer.review", "agent", **{
+            "agentorch.role": "reviewer", "agentorch.subtask_id": subtask.id,
+        }) as s:
+            outcome = self._review(subtask, result, **kwargs)
+            v = outcome.verdict
+            set_attributes(s, {
+                "agentorch.passed": outcome.passed, "agentorch.quality": v.quality_score,
+                "agentorch.blocking_issues": v.blocking_issues or None,
+                "agentorch.suggestions": v.suggestions or None,
+            })
+            return outcome
+
+    def _review(
         self,
         subtask: Subtask,
         result: SubtaskResult,

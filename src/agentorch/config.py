@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     sandbox_image: str = "python:3.11-slim"
     sandbox_timeout_seconds: int = 30
 
+    # Observability: spans also go to an OTLP collector (e.g. Jaeger) when this is set.
+    otel_exporter_otlp_endpoint: str = ""
+    otel_service_name: str = "agentorch"
+
     # Human review: optional Slack-style webhook for "review needed" notifications.
     review_webhook_url: str = ""
 

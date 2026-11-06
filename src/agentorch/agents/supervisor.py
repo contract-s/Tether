@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from agentorch.agents.planning import InvalidPlanError, validate_plan
 from agentorch.agents.schemas import ExecutionPlan, Specialist, Subtask
 from agentorch.llm import LLMClient, LLMUsage
+from agentorch.observability.tracing import set_attributes, span
 
 SPECIALIST_DESCRIPTIONS = {
     Specialist.RESEARCH: "finds information: web search, reading sources, collecting facts",
@@ -56,6 +57,23 @@ class Supervisor:
         self.max_attempts = max_attempts
 
     def plan(self, task: str, memories: list[str] | None = None) -> PlanningResult:
+        """Plan the task (see `_plan`), traced as one `supervisor.plan` span."""
+        with span("supervisor.plan", "agent", **{
+            "agentorch.role": "supervisor", "agentorch.memories_given": len(memories or []),
+        }) as s:
+            result = self._plan(task, memories)
+            set_attributes(s, {
+                "agentorch.attempts": result.attempts,
+                "agentorch.confidence": result.plan.confidence,
+                "agentorch.subtasks": len(result.plan.subtasks),
+                # A coarse task type for cost metrics: which specialists the plan used.
+                "agentorch.task_type": "+".join(sorted({st.specialist.value
+                                                        for st in result.plan.subtasks})),
+                "agentorch.batches": [[st.id for st in b] for b in result.batches],
+            })
+            return result
+
+    def _plan(self, task: str, memories: list[str] | None = None) -> PlanningResult:
         prompt = self._build_prompt(task, memories or [])
         usage: list[LLMUsage] = []
         last_error: InvalidPlanError | None = None
@@ -83,6 +101,14 @@ class Supervisor:
         self, task: str, plan: ExecutionPlan, outputs: dict[str, str]
     ) -> tuple[str, LLMUsage]:
         """Combine the approved subtask outputs into the final deliverable."""
+        with span("supervisor.synthesize", "agent", **{
+            "agentorch.role": "supervisor", "agentorch.outputs": len(outputs),
+        }):
+            return self._synthesize(task, plan, outputs)
+
+    def _synthesize(
+        self, task: str, plan: ExecutionPlan, outputs: dict[str, str]
+    ) -> tuple[str, LLMUsage]:
         parts = [f"<request>\n{task}\n</request>"]
         for st in plan.subtasks:
             if st.id in outputs:

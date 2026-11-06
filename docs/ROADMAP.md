@@ -19,9 +19,9 @@
 - [x] Review UI with context, proposed action, memories, actions, and chat panel
 
 ## Phase 4: Observability (Days 10-12)
-- [ ] OpenTelemetry trace tree for every execution
+- [x] OpenTelemetry trace tree for every execution
 - [ ] Trace explorer UI (color-coded nodes, expandable prompts/responses)
-- [ ] Cost and performance tracking per task, agent, model
+- [x] Cost and performance tracking per task, agent, model
 - [ ] Replay system with step-through and input modification
 
 ## Phase 5: Integration and testing (Days 12-13)

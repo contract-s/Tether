@@ -22,6 +22,13 @@ from agentorch.hitl.assistant import ReviewAssistant
 from agentorch.hitl.escalation import OPTIONS, ApprovalLevel, Decision
 from agentorch.hitl.notifier import LogNotifier, Notifier
 from agentorch.hitl.store import HitlStore, ReviewMessage, ReviewRecord, TaskRecord
+from agentorch.observability.tracing import (
+    flush,
+    mark_error,
+    set_attributes,
+    task_context,
+    tracer,
+)
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +84,7 @@ class TaskService:
             raise ReviewNotPending("the task is no longer waiting on this review")
 
         resolved = self.store.resolve_review(review_id, decision.model_dump(mode="json"))
+        self._trace_review(resolved)
         self.store.update_task(review.task_id, status="running")
         resume = Command(resume=decision.model_dump(mode="json", exclude_none=True))
         self._submit(lambda: self._advance(review.task_id, resume))
@@ -100,15 +108,49 @@ class TaskService:
     # --- internals -------------------------------------------------------------
 
     def _advance(self, task_id: str, inp: Any) -> None:
-        with self._lock(task_id):
+        try:
+            self._advance_traced(task_id, inp)
+        finally:
+            flush()  # make the segment visible in the trace explorer right away
+
+    def _advance_traced(self, task_id: str, inp: Any) -> None:
+        resumed = isinstance(inp, Command)
+        with self._lock(task_id), tracer().start_as_current_span(
+            "task.resume" if resumed else "task.start", context=task_context(task_id),
+            record_exception=False, set_status_on_exception=False,
+        ) as s:
+            s.set_attribute("agentorch.kind", "segment")
+            s.set_attribute("agentorch.task_id", task_id)
             self.store.update_task(task_id, status="running")
             try:
                 self.graph.invoke(inp, self._config(task_id))
             except Exception as e:  # noqa: BLE001 - surface any crash on the task
                 log.exception("task %s crashed", task_id)
+                s.record_exception(e)
+                mark_error(s, f"{type(e).__name__}: {e}")
                 self.store.update_task(task_id, status="failed", error=f"{type(e).__name__}: {e}")
                 return
             self._sync(task_id)
+            s.set_attribute("agentorch.task_status",
+                            self.store.get_task(task_id).status)  # type: ignore[union-attr]
+
+    def _trace_review(self, review: ReviewRecord) -> None:
+        """A span covering the time the task waited on this human."""
+        assert review.resolved_at is not None
+        s = tracer().start_span(
+            f"human.{review.level}", context=task_context(review.task_id),
+            start_time=int(review.created_at * 1e9),
+        )
+        set_attributes(s, {
+            "agentorch.kind": "human", "agentorch.review_id": review.id,
+            "agentorch.trigger": review.trigger, "agentorch.level": review.level,
+            "agentorch.subtask_id": review.request.get("subtask_id"),
+            "human.decision": (review.decision or {}).get("action"),
+            "human.note": (review.decision or {}).get("note"),
+            "human.reviewer": review.reviewer,
+            "human.wait_seconds": round(review.resolved_at - review.created_at, 3),
+        })
+        s.end(end_time=int(review.resolved_at * 1e9))
 
     def _sync(self, task_id: str) -> None:
         """Mirror the checkpointed run into the task and review tables."""

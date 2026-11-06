@@ -17,6 +17,7 @@ from agentorch.memory.extractor import MemoryExtractor
 from agentorch.memory.long_term import ChromaDefaultEmbedder, LongTermMemory
 from agentorch.memory.service import MemoryServices
 from agentorch.memory.working import WorkingMemory
+from agentorch.observability.llm_tracing import TracingLLM
 from agentorch.tools.defaults import build_default_registry
 from agentorch.tools.registry import ToolRegistry
 
@@ -46,7 +47,7 @@ def default_memory(llm: LLMClient) -> MemoryServices:
 
 
 def default_agents(llm: LLMClient | None = None, registry: ToolRegistry | None = None) -> Agents:
-    llm = llm or AnthropicClient()
+    llm = llm or TracingLLM(AnthropicClient())
     registry = registry or build_default_registry()
     return Agents(
         supervisor=Supervisor(llm),
@@ -58,6 +59,18 @@ def default_agents(llm: LLMClient | None = None, registry: ToolRegistry | None =
 
 def default_workflow(checkpointer: BaseCheckpointSaver | None = None):
     return build_workflow(default_agents(), checkpointer=checkpointer)
+
+
+def setup_default_tracing(engine=None) -> None:
+    """Spans go to the span store (trace explorer, cost metrics) and, if configured, OTLP."""
+    from agentorch.hitl.store import make_engine
+    from agentorch.observability.store import SpanStore, SpanStoreExporter
+    from agentorch.observability.tracing import setup_tracing
+
+    engine = engine or make_engine(settings.database_url)
+    setup_tracing([SpanStoreExporter(SpanStore(engine))],
+                  service_name=settings.otel_service_name,
+                  otlp_endpoint=settings.otel_exporter_otlp_endpoint)
 
 
 def postgres_checkpointer() -> BaseCheckpointSaver:
@@ -83,9 +96,11 @@ def default_task_service():
 
     notifier = (WebhookNotifier(settings.review_webhook_url) if settings.review_webhook_url
                 else LogNotifier())
+    engine = make_engine(settings.database_url)
+    setup_default_tracing(engine)
     return TaskService(
         graph=default_workflow(checkpointer=postgres_checkpointer()),
-        store=HitlStore(make_engine(settings.database_url)),
+        store=HitlStore(engine),
         notifier=notifier,
-        assistant=ReviewAssistant(AnthropicClient()),
+        assistant=ReviewAssistant(TracingLLM(AnthropicClient())),
     )

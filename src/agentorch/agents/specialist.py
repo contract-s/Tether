@@ -10,6 +10,7 @@ from agentorch.agents.schemas import Specialist, Subtask, SubtaskResult
 from agentorch.agents.supervisor import SPECIALIST_DESCRIPTIONS
 from agentorch.hitl.escalation import action_key
 from agentorch.llm import LLMClient, LLMUsage, ToolCall
+from agentorch.observability.tracing import clip, mark_error, set_attributes, span
 from agentorch.tools.registry import (
     ApprovalRequiredError,
     RateLimitExceededError,
@@ -63,7 +64,25 @@ class SpecialistAgent:
         self.registry = registry
         self.max_turns = max_turns
 
-    def run(
+    def run(self, subtask: Subtask, **kwargs: Any) -> SpecialistRun:
+        """Run the subtask (see `_run`), traced as one `specialist.run` span."""
+        with span("specialist.run", "agent", **{
+            "agentorch.role": "specialist", "agentorch.specialist": self.specialist.value,
+            "agentorch.subtask_id": subtask.id,
+            "agentorch.has_feedback": bool(kwargs.get("reviewer_feedback")),
+        }) as s:
+            run = self._run(subtask, **kwargs)
+            set_attributes(s, {
+                "agentorch.turns": run.turns, "agentorch.tool_calls": len(run.tool_calls),
+                "agentorch.succeeded": run.result.succeeded,
+                "agentorch.pending_approvals": len(run.pending_approvals),
+                "agentorch.output": clip(run.result.output),
+            })
+            if not run.result.succeeded:
+                mark_error(s, run.result.error or "failed")
+            return run
+
+    def _run(
         self,
         subtask: Subtask,
         dependency_outputs: dict[str, str] | None = None,

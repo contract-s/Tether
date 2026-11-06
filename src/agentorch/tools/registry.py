@@ -8,6 +8,7 @@ pause sensitive calls for human approval.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
@@ -20,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from pydantic import BaseModel, ValidationError
 
 from agentorch.agents.schemas import Specialist
+from agentorch.observability.tracing import clip, mark_error, set_attributes, span
 
 if TYPE_CHECKING:
     from agentorch.memory.working import WorkingMemory
@@ -156,6 +158,34 @@ class ToolRegistry:
         Raises ToolError only for calls that must not run: unknown tool, caller not
         allowed, rate limit hit, or a sensitive call without `approved=True`.
         """
+        with span(f"tool.{name}", "tool", **{
+            "agentorch.tool": name, "agentorch.caller": caller.value,
+            "agentorch.subtask_id": context.subtask_id if context else None,
+            "tool.input": raw_input,
+        }) as s:
+            try:
+                record = self._invoke(name, caller, raw_input, approved, context)
+            except ToolError as e:
+                set_attributes(s, {"tool.blocked": type(e).__name__})
+                mark_error(s, str(e))
+                raise
+            set_attributes(s, {
+                "tool.success": record.success, "tool.sensitive": record.sensitive,
+                "tool.output": clip(json.dumps(record.output, default=str))
+                if record.output is not None else None,
+            })
+            if not record.success:
+                mark_error(s, record.error or "tool failed")
+            return record
+
+    def _invoke(
+        self,
+        name: str,
+        caller: Specialist,
+        raw_input: dict[str, Any],
+        approved: bool,
+        context: ToolContext | None,
+    ) -> ToolCallRecord:
         tool = self.get(name)
         if caller not in tool.allowed_specialists:
             raise ToolPermissionError(f"{caller.value} may not use {name!r}")

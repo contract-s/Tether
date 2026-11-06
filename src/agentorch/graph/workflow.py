@@ -27,6 +27,7 @@ Memory failures are recorded but never fail the task.
 
 from __future__ import annotations
 
+import functools
 import json
 import operator
 from collections.abc import Callable
@@ -36,6 +37,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, interrupt
 from pydantic import BaseModel
@@ -58,6 +60,7 @@ from agentorch.hitl.escalation import (
 from agentorch.llm import LLMUsage
 from agentorch.memory.long_term import StoredMemory
 from agentorch.memory.service import MemoryServices
+from agentorch.observability.tracing import mark_error, set_attributes, tracer
 from agentorch.tools.registry import ToolCallRecord, ToolContext
 
 
@@ -437,7 +440,7 @@ def build_workflow(
                      ("schedule", schedule), ("work", work), ("human_action", human_action),
                      ("human_subtask", human_subtask), ("synthesize", synthesize),
                      ("human_final", human_final), ("deliver", deliver)]:
-        graph.add_node(name, fn)
+        graph.add_node(name, _traced(name, fn))
 
     graph.add_edge(START, "intake")
     graph.add_conditional_edges("intake", after_intake, ["plan", END])
@@ -456,6 +459,35 @@ def build_workflow(
 
 
 # --- helpers -----------------------------------------------------------------
+
+def _traced(name: str, fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Run a node inside a `node.<name>` span. A human-review pause is recorded as
+    `paused`, not as an error."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        payload = args[0] if args and isinstance(args[0], dict) else {}
+        attrs: dict[str, Any] = {"agentorch.node": name}
+        if name == "work":
+            attrs.update({"agentorch.subtask_id": payload["subtask"].id,
+                          "agentorch.attempt": payload["attempt"]})
+        with tracer().start_as_current_span(
+            f"node.{name}", record_exception=False, set_status_on_exception=False,
+        ) as s:
+            s.set_attribute("agentorch.kind", "node")
+            set_attributes(s, attrs)
+            try:
+                return fn(*args, **kwargs)
+            except GraphInterrupt:
+                s.set_attribute("agentorch.paused", True)
+                raise
+            except Exception as e:
+                s.record_exception(e)
+                mark_error(s, f"{type(e).__name__}: {e}")
+                raise
+
+    return wrapper
+
 
 def _request(
     state: WorkflowState,
