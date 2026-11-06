@@ -74,6 +74,21 @@ def make_engine(url: str) -> Engine:
     return create_engine(url, pool_pre_ping=True)
 
 
+class ReplayRecord(Base):
+    """A task that was forked from a checkpoint of another task (see `agentorch.replay`)."""
+
+    __tablename__ = "replays"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # the new task's id
+    source_task_id: Mapped[str] = mapped_column(String(64), index=True)
+    checkpoint_id: Mapped[str] = mapped_column(String(64))
+    step: Mapped[int] = mapped_column(Integer)
+    resumed_after: Mapped[str] = mapped_column(String(64))  # node the fork continues after
+    fork_time: Mapped[float] = mapped_column(Float)  # when the source reached that step
+    changes: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
 class HitlStore:
     def __init__(self, engine: Engine) -> None:
         Base.metadata.create_all(engine)
@@ -185,5 +200,23 @@ class HitlStore:
              .order_by(ReviewRecord.resolved_at.desc()).limit(limit))
         if exclude_id:
             q = q.where(ReviewRecord.id != exclude_id)
+        with self._session() as s:
+            return list(s.scalars(q))
+
+    # --- replays ---------------------------------------------------------------
+
+    def add_replay(self, **fields: Any) -> ReplayRecord:
+        record = ReplayRecord(created_at=time.time(), **fields)
+        with self._session.begin() as s:
+            s.add(record)
+        return record
+
+    def get_replay(self, replay_id: str) -> ReplayRecord | None:
+        with self._session() as s:
+            return s.get(ReplayRecord, replay_id)
+
+    def replays_of(self, task_id: str) -> list[ReplayRecord]:
+        q = (select(ReplayRecord).where(ReplayRecord.source_task_id == task_id)
+             .order_by(ReplayRecord.created_at.desc()))
         with self._session() as s:
             return list(s.scalars(q))

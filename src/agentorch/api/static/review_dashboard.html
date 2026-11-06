@@ -217,7 +217,8 @@ async function showTask(id) {
     el("section", { className: "panel" },
       el("div", { className: "row" }, chip(t.status, t.status),
          el("span", { className: "muted", textContent: `user ${t.user_id} · ${ago(t.created_at)}` }),
-         el("a", { href: `/dashboard/traces?task=${encodeURIComponent(t.id)}`, textContent: "View trace" })),
+         el("a", { href: `/dashboard/traces?task=${encodeURIComponent(t.id)}`, textContent: "View trace" }),
+         el("a", { href: `/dashboard/replay?task=${encodeURIComponent(t.id)}`, textContent: "Replay" })),
       el("h3", { textContent: t.task, style: "margin-top:8px" }),
       t.pending_review ? (() => { const b = el("button", { className: "primary",
         textContent: "Open the review waiting on you" });

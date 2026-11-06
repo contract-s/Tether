@@ -269,7 +269,10 @@ function renderMain() {
     el("h2", {}, "Task ", el("span", { style: "text-transform:none;font-family:ui-monospace,Menlo,monospace",
                                         textContent: state.taskId }),
        c.task_type ? el("span", { className: "chip", style: "margin-left:8px;text-transform:none",
-                                   textContent: c.task_type }) : null),
+                                   textContent: c.task_type }) : null,
+       el("a", { href: "/dashboard/replay?task=" + encodeURIComponent(state.taskId),
+                 style: "margin-left:12px;text-transform:none;letter-spacing:0",
+                 textContent: "Step through / replay" })),
     stats,
     roleRows.length ? el("details", { style: "margin-top:10px" },
       el("summary", { className: "muted", textContent: "Cost by agent" }), byRole) : null);

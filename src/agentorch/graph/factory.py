@@ -24,16 +24,21 @@ from agentorch.tools.registry import ToolRegistry
 log = logging.getLogger(__name__)
 
 
-def default_memory(llm: LLMClient) -> MemoryServices:
-    """Connect whichever memory stores are running; the workflow works without them."""
+def default_working_memory() -> MemoryServices:
+    """Only the per-task Redis working memory (no LLM or vector store needed)."""
     services = MemoryServices()
-
     client = redis.Redis.from_url(settings.redis_url)
     try:
         client.ping()
         services.working = lambda task_id: WorkingMemory(client, task_id)
     except redis.RedisError as e:
         log.warning("Redis unavailable, running without working memory: %s", e)
+    return services
+
+
+def default_memory(llm: LLMClient) -> MemoryServices:
+    """Connect whichever memory stores are running; the workflow works without them."""
+    services = default_working_memory()
 
     try:
         import chromadb

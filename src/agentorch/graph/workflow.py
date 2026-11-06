@@ -127,6 +127,10 @@ class WorkflowState(TypedDict, total=False):
 
     final_output: str
 
+    # Set on runs forked from another task's checkpoint (see `agentorch.replay`).
+    replay_of: str | None  # source task id; replays never write long-term memories
+    reuse_memories: bool  # plan with the source's memories instead of retrieving again
+
 
 @dataclass
 class Agents:
@@ -164,10 +168,15 @@ def build_workflow(
     def plan(state: WorkflowState) -> dict[str, Any]:
         update: dict[str, Any] = {}
         retrieved: list[StoredMemory] = []
-        try:
-            retrieved = memory.retrieve(state["user_id"], state["task"])
-        except Exception as e:  # noqa: BLE001 - memory is best-effort
-            update["memory_errors"] = [f"retrieve: {type(e).__name__}: {e}"]
+        if state.get("reuse_memories"):
+            # A replay compares like with like: same memories as the original run,
+            # not ones the original (or later tasks) wrote since.
+            retrieved = list(state.get("memories_used", []))
+        else:
+            try:
+                retrieved = memory.retrieve(state["user_id"], state["task"])
+            except Exception as e:  # noqa: BLE001 - memory is best-effort
+                update["memory_errors"] = [f"retrieve: {type(e).__name__}: {e}"]
         context = [*state.get("memories", []), *(m.as_prompt_line() for m in retrieved)]
         try:
             result = agents.supervisor.plan(state["task"], context)
@@ -372,13 +381,15 @@ def build_workflow(
 
     def deliver(state: WorkflowState) -> dict[str, Any]:
         update: dict[str, Any] = {"status": "done", "memories_saved": []}
-        try:
-            ids, usage = memory.remember(state["user_id"], state["task_id"], _transcript(state))
-            update["memories_saved"] = ids
-            if usage:
-                update["usage"] = [usage]
-        except Exception as e:  # noqa: BLE001 - memory is best-effort
-            update["memory_errors"] = [f"remember: {type(e).__name__}: {e}"]
+        if not state.get("replay_of"):  # experiments shouldn't teach the user's memory
+            try:
+                ids, usage = memory.remember(state["user_id"], state["task_id"],
+                                             _transcript(state))
+                update["memories_saved"] = ids
+                if usage:
+                    update["usage"] = [usage]
+            except Exception as e:  # noqa: BLE001 - memory is best-effort
+                update["memory_errors"] = [f"remember: {type(e).__name__}: {e}"]
         wm = memory.working_for(state["task_id"])
         if wm:
             _best_effort(update, "working.clear", wm.clear)

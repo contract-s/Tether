@@ -22,7 +22,7 @@
 - [x] OpenTelemetry trace tree for every execution
 - [x] Trace explorer UI (color-coded nodes, expandable prompts/responses)
 - [x] Cost and performance tracking per task, agent, model
-- [ ] Replay system with step-through and input modification
+- [x] Replay system with step-through and input modification
 
 ## Phase 5: Integration and testing (Days 12-13)
 - [ ] Showcase demo scenario (research → extraction → analysis → summary)
