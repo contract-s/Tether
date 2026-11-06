@@ -39,6 +39,8 @@ class ToolContext:
     task_id: str | None = None
     subtask_id: str | None = None
     working_memory: WorkingMemory | None = None
+    # action_key(tool, input) of sensitive calls a human already approved for this task.
+    preapproved: frozenset[str] = frozenset()
 
 
 @dataclass

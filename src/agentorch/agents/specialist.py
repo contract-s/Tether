@@ -8,6 +8,7 @@ from typing import Any
 
 from agentorch.agents.schemas import Specialist, Subtask, SubtaskResult
 from agentorch.agents.supervisor import SPECIALIST_DESCRIPTIONS
+from agentorch.hitl.escalation import action_key
 from agentorch.llm import LLMClient, LLMUsage, ToolCall
 from agentorch.tools.registry import (
     ApprovalRequiredError,
@@ -32,8 +33,9 @@ requested. A reviewer will check your work against the expected output, so:
 - Ground factual claims in tool results and cite sources where you have them.
 - If you could not fully complete the subtask, say exactly what is missing and why \
 instead of guessing.
-- Some actions need human approval. If a tool reports that, continue without that \
-action where possible and state what was not done."""
+- Some actions need human approval. If a tool reports that, briefly say why you need \
+the action, then finish the rest of the subtask without it and state what was not done. \
+A human will review the request."""
 
 
 @dataclass
@@ -43,6 +45,8 @@ class SpecialistRun:
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     # Sensitive actions the agent wanted to take but that were held for a human.
     pending_approvals: list[ToolCall] = field(default_factory=list)
+    # tool call id -> what the agent said right before asking (its reasoning).
+    approval_reasons: dict[str, str] = field(default_factory=dict)
     turns: int = 0
 
 
@@ -83,7 +87,7 @@ class SpecialistAgent:
 
             if turn.stop_reason == "tool_use" and turn.tool_calls:
                 # All results go back in a single user message.
-                results = [self._execute(call, run, context) for call in turn.tool_calls]
+                results = [self._execute(call, run, context, turn.text) for call in turn.tool_calls]
                 messages.append({"role": "user", "content": results})
                 continue
             if turn.stop_reason == "pause_turn":
@@ -103,14 +107,17 @@ class SpecialistAgent:
         return run
 
     def _execute(
-        self, call: ToolCall, run: SpecialistRun, context: ToolContext
+        self, call: ToolCall, run: SpecialistRun, context: ToolContext, reasoning: str = ""
     ) -> dict[str, Any]:
+        approved = action_key(call.name, call.input) in context.preapproved
         try:
             record = self.registry.invoke(
-                call.name, self.specialist, call.input, context=context
+                call.name, self.specialist, call.input, approved=approved, context=context
             )
         except ApprovalRequiredError:
             run.pending_approvals.append(call)
+            if reasoning.strip():
+                run.approval_reasons[call.id] = reasoning.strip()
             return _tool_error(call.id, "This action needs human approval and was not run.")
         except RateLimitExceededError as e:
             return _tool_error(call.id, f"Rate limited: {e}. Try again later or proceed without.")

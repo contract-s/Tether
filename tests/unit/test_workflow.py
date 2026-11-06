@@ -114,7 +114,8 @@ def test_repeated_failure_escalates_then_human_takes_over() -> None:
     result = graph.invoke({"task": "x"}, config)
 
     pause = interrupt_of(result)
-    assert pause["type"] == "subtask_failed" and pause["subtask"]["id"] == "t2"
+    assert pause["level"] == "take_over" and pause["trigger"] == "repeated_failure"
+    assert pause["subtask_id"] == "t2"
     assert len(llm.specialist_prompts["t2"]) == 2
     assert "t3" not in llm.specialist_prompts  # later batch waits for the human
 
@@ -150,7 +151,7 @@ def test_low_confidence_plan_waits_for_human() -> None:
     graph, config = make_graph(llm)
     result = graph.invoke({"task": "x"}, config)
 
-    assert interrupt_of(result)["type"] == "approve_plan"
+    assert interrupt_of(result)["level"] == "approve_plan"
     assert llm.specialist_prompts == {}  # nothing runs before approval
     result = graph.invoke(Command(resume={"action": "approve"}), config)
     assert result["status"] == "done"

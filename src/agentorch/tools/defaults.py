@@ -50,6 +50,8 @@ def build_default_registry(log: ToolCallLog | None = None) -> ToolRegistry:
         output_model=files.FileWriteOutput,
         handler=workspace.write,
         allowed_specialists=frozenset({S.ANALYSIS, S.WRITING, S.CODE}),
+        # Overwriting destroys the existing file, so it needs a human's approval.
+        is_sensitive=lambda args: args.overwrite,
     ))
     registry.register(Tool(
         name="code_exec",

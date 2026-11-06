@@ -58,3 +58,32 @@ def default_agents(llm: LLMClient | None = None, registry: ToolRegistry | None =
 
 def default_workflow(checkpointer: BaseCheckpointSaver | None = None):
     return build_workflow(default_agents(), checkpointer=checkpointer)
+
+
+def postgres_checkpointer() -> BaseCheckpointSaver:
+    """Durable checkpoints, so a run paused for review survives restarts."""
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg.rows import dict_row
+    from psycopg_pool import ConnectionPool
+
+    url = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
+    pool = ConnectionPool(url, max_size=10, open=True,
+                          kwargs={"autocommit": True, "prepare_threshold": 0,
+                                  "row_factory": dict_row})
+    saver = PostgresSaver(pool)
+    saver.setup()
+    return saver
+
+
+def default_task_service():
+    from agentorch.hitl.notifier import LogNotifier, WebhookNotifier
+    from agentorch.hitl.service import TaskService
+    from agentorch.hitl.store import HitlStore, make_engine
+
+    notifier = (WebhookNotifier(settings.review_webhook_url) if settings.review_webhook_url
+                else LogNotifier())
+    return TaskService(
+        graph=default_workflow(checkpointer=postgres_checkpointer()),
+        store=HitlStore(make_engine(settings.database_url)),
+        notifier=notifier,
+    )

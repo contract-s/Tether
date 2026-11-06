@@ -13,9 +13,9 @@
 - [x] Memory management: importance scoring, consolidation, decay, dashboard, delete endpoint
 
 ## Phase 3: Human-in-the-loop (Days 7-10)
-- [ ] Escalation triggers: low plan confidence, 2x specialist failure, sensitive ops, low review score, user request
-- [ ] Approval queue: pause, package context, notify, resume on decision
-- [ ] Approval levels: Notify / Approve action / Approve plan / Take over
+- [x] Escalation triggers: low plan confidence, 2x specialist failure, sensitive ops, low review score, user request
+- [x] Approval queue: pause, package context, notify, resume on decision
+- [x] Approval levels: Notify / Approve action / Approve plan / Take over
 - [ ] Review UI with context, proposed action, memories, actions, and chat panel
 
 ## Phase 4: Observability (Days 10-12)

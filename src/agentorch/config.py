@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     sandbox_image: str = "python:3.11-slim"
     sandbox_timeout_seconds: int = 30
 
+    # Human review: optional Slack-style webhook for "review needed" notifications.
+    review_webhook_url: str = ""
+
     plan_confidence_threshold: float = 0.7
     review_quality_threshold: float = 0.7
     max_specialist_retries: int = 2
