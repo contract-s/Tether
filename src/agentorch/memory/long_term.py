@@ -2,48 +2,23 @@
 
 After a task finishes, the extractor distills what's worth keeping (what was asked, what
 approach worked, useful facts, user preferences, pitfalls). Each item is embedded and
-stored per user. Before planning, the supervisor retrieves the most similar memories.
+stored per user. Before planning, the supervisor retrieves the most relevant memories,
+ranked by similarity and importance (see `scoring`).
 """
 
 from __future__ import annotations
 
 import time
 import uuid
-from enum import StrEnum
 from typing import Any, Protocol
 
-from pydantic import BaseModel, Field
+from agentorch.memory import scoring
+from agentorch.memory.long_term_types import MemoryItem, MemoryKind, StoredMemory
+
+__all__ = ["LongTermMemory", "MemoryItem", "MemoryKind", "StoredMemory", "Embedder",
+           "ChromaDefaultEmbedder"]
 
 COLLECTION = "agentorch-memories"
-
-
-class MemoryKind(StrEnum):
-    REQUEST = "request"  # what the user asked for, in one line
-    APPROACH = "approach"  # an approach or plan shape that worked
-    PITFALL = "pitfall"  # an approach that failed, and why
-    TOOL_USAGE = "tool_usage"  # how a tool was best used for this kind of task
-    FACT = "fact"  # a domain fact discovered, with its source and date
-    PREFERENCE = "preference"  # something the user prefers
-
-
-class MemoryItem(BaseModel):
-    kind: MemoryKind
-    text: str = Field(description="Self-contained: readable without the original task")
-
-
-class StoredMemory(BaseModel):
-    id: str
-    user_id: str
-    kind: MemoryKind
-    text: str
-    task_id: str
-    created_at: float
-    access_count: int
-    last_accessed_at: float
-    distance: float | None = None  # cosine distance to the query, when retrieved
-
-    def as_prompt_line(self) -> str:
-        return f"[{self.kind.value}] {self.text}"
 
 
 class Embedder(Protocol):
@@ -70,7 +45,16 @@ class LongTermMemory:
             collection, embedding_function=None, configuration={"hnsw": {"space": "cosine"}}
         )
 
-    def add(self, user_id: str, task_id: str, items: list[MemoryItem]) -> list[str]:
+    # --- writes ----------------------------------------------------------------
+
+    def add(
+        self,
+        user_id: str,
+        task_id: str,
+        items: list[MemoryItem],
+        overrides: dict[str, Any] | None = None,
+    ) -> list[str]:
+        """Store memories. `overrides` sets metadata such as carried-over access counts."""
         items = [i for i in items if i.text.strip()]
         if not items:
             return []
@@ -78,57 +62,105 @@ class LongTermMemory:
         ids = [uuid.uuid4().hex for _ in items]
         self._col.add(
             ids=ids,
-            embeddings=self._embedder.embed([i.text for i in items]),
+            embeddings=self.embed([i.text for i in items]),
             documents=[i.text for i in items],
             metadatas=[{
                 "user_id": user_id, "kind": i.kind.value, "task_id": task_id,
                 "created_at": now, "access_count": 0, "last_accessed_at": now,
+                "consolidated_from": 1, **(overrides or {}),
             } for i in items],
         )
         return ids
 
-    def search(
-        self, user_id: str, query: str, k: int = 8, max_distance: float = 0.7
-    ) -> list[StoredMemory]:
-        """Most similar memories for this user. Retrieval counts toward importance.
+    def delete(self, ids: list[str]) -> int:
+        if ids:
+            self._col.delete(ids=ids)
+        return len(ids)
 
-        The 0.7 cosine-distance cutoff is calibrated for all-MiniLM-L6-v2: related
-        memories land around 0.45-0.66, near-duplicates of the task under 0.2.
+    def delete_user(self, user_id: str) -> int:
+        """Forget everything about a user (data deletion requests)."""
+        return self.delete(self._col.get(where={"user_id": user_id}, include=[])["ids"])
+
+    def expire(
+        self, user_id: str | None = None, now: float | None = None,
+        threshold: float = scoring.EXPIRE_BELOW,
+    ) -> list[StoredMemory]:
+        """Delete memories whose decayed importance fell below the threshold."""
+        now = time.time() if now is None else now
+        stale = [m for m in self.list(user_id, now=now) if (m.importance or 0) < threshold]
+        self.delete([m.id for m in stale])
+        return stale
+
+    # --- reads -----------------------------------------------------------------
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return self._embedder.embed(texts)
+
+    def search(
+        self,
+        user_id: str,
+        query: str,
+        k: int = 8,
+        max_distance: float = 0.7,
+        now: float | None = None,
+    ) -> list[StoredMemory]:
+        """The k most relevant memories for this user. Retrieval counts toward importance.
+
+        Candidates must be within `max_distance` (cosine). The 0.7 cutoff is calibrated
+        for all-MiniLM-L6-v2: related memories land around 0.45-0.66, near-duplicates of
+        the task under 0.2. Candidates are then ranked by similarity blended with
+        importance.
         """
         if self._col.count() == 0:
             return []
+        now = time.time() if now is None else now
         res = self._col.query(
-            query_embeddings=self._embedder.embed([query]),
-            n_results=k,
+            query_embeddings=self.embed([query]),
+            n_results=k * 3,  # over-fetch so importance can reorder
             where={"user_id": user_id},
         )
-        found = [
-            _to_memory(id_, doc, meta, dist)
+        candidates = [
+            _to_memory(id_, doc, meta, dist, now)
             for id_, doc, meta, dist in zip(
                 res["ids"][0], res["documents"][0], res["metadatas"][0], res["distances"][0],
                 strict=True,
             )
             if dist <= max_distance
         ]
-        self._touch(found)
+        candidates.sort(key=lambda m: scoring.rank_score(m.distance, m.importance), reverse=True)
+        found = candidates[:k]
+        self._touch(found, now)
         return found
 
-    def list(self, user_id: str) -> list[StoredMemory]:
-        res = self._col.get(where={"user_id": user_id})
-        return [_to_memory(i, d, m, None)
-                for i, d, m in zip(res["ids"], res["documents"], res["metadatas"], strict=True)]
+    def list(self, user_id: str | None = None, now: float | None = None) -> list[StoredMemory]:
+        """All memories (for one user, or everyone), most important first."""
+        now = time.time() if now is None else now
+        res = self._col.get(where={"user_id": user_id} if user_id else None)
+        memories = [_to_memory(i, d, m, None, now)
+                    for i, d, m in zip(res["ids"], res["documents"], res["metadatas"],
+                                       strict=True)]
+        return sorted(memories, key=lambda m: m.importance or 0, reverse=True)
 
-    def delete_user(self, user_id: str) -> int:
-        """Forget everything about a user (data deletion requests)."""
-        ids = self._col.get(where={"user_id": user_id}, include=[])["ids"]
-        if ids:
-            self._col.delete(ids=ids)
-        return len(ids)
+    def with_embeddings(self, user_id: str) -> list[tuple[StoredMemory, list[float]]]:
+        now = time.time()
+        res = self._col.get(where={"user_id": user_id},
+                            include=["documents", "metadatas", "embeddings"])
+        return [(_to_memory(i, d, m, None, now), list(map(float, e)))
+                for i, d, m, e in zip(res["ids"], res["documents"], res["metadatas"],
+                                      res["embeddings"], strict=True)]
 
-    def _touch(self, memories: list[StoredMemory]) -> None:
+    def users(self) -> dict[str, int]:
+        """user_id -> number of memories."""
+        counts: dict[str, int] = {}
+        for meta in self._col.get(include=["metadatas"])["metadatas"]:
+            counts[meta["user_id"]] = counts.get(meta["user_id"], 0) + 1
+        return counts
+
+    # --- internals -------------------------------------------------------------
+
+    def _touch(self, memories: list[StoredMemory], now: float) -> None:
         if not memories:
             return
-        now = time.time()
         for m in memories:
             m.access_count += 1
             m.last_accessed_at = now
@@ -139,10 +171,14 @@ class LongTermMemory:
         )
 
 
-def _to_memory(id_: str, doc: str, meta: dict[str, Any], dist: float | None) -> StoredMemory:
-    return StoredMemory(
+def _to_memory(
+    id_: str, doc: str, meta: dict[str, Any], dist: float | None, now: float
+) -> StoredMemory:
+    memory = StoredMemory(
         id=id_, user_id=meta["user_id"], kind=MemoryKind(meta["kind"]), text=doc,
         task_id=meta["task_id"], created_at=meta["created_at"],
         access_count=int(meta["access_count"]), last_accessed_at=meta["last_accessed_at"],
-        distance=dist,
+        consolidated_from=int(meta.get("consolidated_from", 1)), distance=dist,
     )
+    memory.importance = scoring.importance(memory, now)
+    return memory

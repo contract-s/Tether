@@ -10,7 +10,7 @@
 - [x] Short-term working memory in Redis, scoped to a single task
 - [x] Long-term semantic memory in ChromaDB, extracted after each task
 - [x] Memory retrieval injected into planning
-- [ ] Memory management: importance scoring, consolidation, decay, dashboard, delete endpoint
+- [x] Memory management: importance scoring, consolidation, decay, dashboard, delete endpoint
 
 ## Phase 3: Human-in-the-loop (Days 7-10)
 - [ ] Escalation triggers: low plan confidence, 2x specialist failure, sensitive ops, low review score, user request
