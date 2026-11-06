@@ -20,7 +20,7 @@
 
 ## Phase 4: Observability (Days 10-12)
 - [x] OpenTelemetry trace tree for every execution
-- [ ] Trace explorer UI (color-coded nodes, expandable prompts/responses)
+- [x] Trace explorer UI (color-coded nodes, expandable prompts/responses)
 - [x] Cost and performance tracking per task, agent, model
 - [ ] Replay system with step-through and input modification
 

@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import time
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from agentorch.observability import metrics
 from agentorch.observability.store import SpanStore
 from agentorch.observability.tracing import flush
 
 router = APIRouter()
+EXPLORER = Path(__file__).parent / "static" / "trace_explorer.html"
 
 
 @lru_cache
@@ -52,3 +55,8 @@ def metrics_summary(spans: Spans, days: Annotated[int, Query(ge=1, le=365)] = 7)
     flush()
     since = int((time.time() - days * 86400) * 1e9)
     return {"days": days, **metrics.summary(spans.since(since))}
+
+
+@router.get("/dashboard/traces", include_in_schema=False)
+def trace_explorer() -> FileResponse:
+    return FileResponse(EXPLORER)

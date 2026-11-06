@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentOrch Traces</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --border: #e3e2dd; --accent: #2f5bd3; --accent-text: #ffffff; --danger: #c0392b;
+    --chip: #efeee9; --ok: #1e7a46; --warn: #a15c00; --code: #f2f1ec; --hover: #f0efea;
+    /* one color per span kind */
+    --k-segment: #6b6b66; --k-node: #2f5bd3; --k-agent: #7a3fc4; --k-llm: #b8530f;
+    --k-tool: #1e7a46; --k-memory: #0f7f8c; --k-human: #c2366e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ecebe6; --muted: #9b9a94;
+      --border: #33322e; --accent: #7b9bff; --accent-text: #10131c; --danger: #ff7b6b;
+      --chip: #2a2a27; --ok: #5fd08e; --warn: #f0b35a; --code: #262624; --hover: #282826;
+      --k-segment: #9b9a94; --k-node: #7b9bff; --k-agent: #b892f5; --k-llm: #f0955a;
+      --k-tool: #5fd08e; --k-memory: #4fc8d4; --k-human: #f27aa8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  header.top { display: flex; align-items: center; justify-content: space-between;
+               gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+               background: var(--panel); flex-wrap: wrap; }
+  header.top h1 { font-size: 17px; margin: 0; }
+  header.top nav { display: flex; gap: 14px; flex-wrap: wrap; }
+  .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr) minmax(0, 440px);
+            gap: 16px; padding: 16px; max-width: 1700px; margin: 0 auto; }
+  @media (max-width: 1250px) { .layout { grid-template-columns: 260px minmax(0, 1fr); }
+                               #detailCol { grid-column: 1 / -1; } }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+           padding: 14px; min-width: 0; }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+       margin: 0 0 10px; }
+  input[type=text] { width: 100%; font: inherit; padding: 6px 8px; border-radius: 6px;
+       border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  button { font: inherit; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  button:hover { border-color: var(--accent); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .item { text-align: left; width: 100%; padding: 8px 10px; border-radius: 6px;
+          border: 1px solid var(--border); background: var(--bg); }
+  .item.active { border-color: var(--accent); }
+  .item .title { display: block; font: 12px ui-monospace, Menlo, monospace;
+                 overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .meta { display: block; color: var(--muted); font-size: 12px; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--chip);
+          font-size: 12px; white-space: nowrap; }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); padding: 8px 0; }
+  .err { color: var(--danger); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .stat { background: var(--bg); border-radius: 6px; padding: 8px 10px; }
+  .stat .v { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12px; color: var(--muted); }
+  table.small { width: 100%; border-collapse: collapse; font-size: 13px;
+                font-variant-numeric: tabular-nums; }
+  table.small th, table.small td { text-align: left; padding: 4px 6px;
+                                   border-bottom: 1px solid var(--border); }
+  table.small td.n, table.small th.n { text-align: right; }
+
+  .kinds { display: flex; gap: 6px; flex-wrap: wrap; }
+  .kind-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;
+                 border-radius: 999px; border: 1px solid var(--border); cursor: pointer;
+                 font-size: 12px; user-select: none; }
+  .kind-toggle.off { opacity: .4; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+  /* trace tree */
+  .tree { font-size: 13px; }
+  .span-row { display: grid; grid-template-columns: minmax(0, 1fr) 34% 64px 70px; gap: 8px;
+              align-items: center; padding: 3px 6px; border-radius: 4px; cursor: pointer;
+              border-left: 3px solid transparent; }
+  .span-row:hover { background: var(--hover); }
+  .span-row.selected { background: var(--hover); outline: 1px solid var(--accent); }
+  .span-row.error .name { color: var(--danger); }
+  .span-row .label { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .span-row .twisty { width: 14px; flex: none; color: var(--muted); text-align: center; }
+  .span-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                    font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .span-row .tag { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .span-row .num { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px;
+                   color: var(--muted); white-space: nowrap; }
+  .bar-track { position: relative; height: 10px; background: var(--chip); border-radius: 3px; }
+  .bar { position: absolute; top: 0; height: 10px; border-radius: 3px; min-width: 2px; }
+  .tree-head { display: grid; grid-template-columns: minmax(0, 1fr) 34% 64px 70px; gap: 8px;
+               padding: 0 6px 4px; font-size: 11px; color: var(--muted);
+               text-transform: uppercase; letter-spacing: .04em; }
+  .tree-head .n { text-align: right; }
+  @media (max-width: 600px) {
+    .span-row, .tree-head { grid-template-columns: minmax(0, 1fr) 56px 64px; }
+    .bar-track, .tree-head .bar-h { display: none; }
+  }
+
+  /* detail */
+  #detailCol .panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+  dl.attrs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px;
+             margin: 0; font-size: 13px; }
+  dl.attrs dt { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  dl.attrs dd { margin: 0; word-break: break-word; }
+  details.big { margin-top: 10px; border: 1px solid var(--border); border-radius: 6px; }
+  details.big summary { cursor: pointer; padding: 6px 10px; font-family: ui-monospace, Menlo, monospace;
+                        font-size: 12px; display: flex; justify-content: space-between; gap: 8px; }
+  details.big[open] summary { border-bottom: 1px solid var(--border); }
+  pre { margin: 0; padding: 10px; background: var(--code); overflow-x: auto; max-height: 480px;
+        overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .kind-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>AgentOrch · Trace explorer</h1>
+  <nav>
+    <a href="/dashboard/reviews">Reviews</a>
+    <a href="/dashboard/memories">Memories</a>
+    <a href="http://localhost:16686" target="_blank" rel="noopener">Jaeger</a>
+    <a href="/docs">API</a>
+  </nav>
+</header>
+
+<div class="layout">
+  <aside class="stack">
+    <section class="panel">
+      <h2>Open a task</h2>
+      <div class="row">
+        <input type="text" id="taskInput" placeholder="task id" aria-label="Task id">
+        <button id="openTask">Open</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Traced tasks <span class="muted" id="totalCost"></span></h2>
+      <div class="list" id="tasks"><p class="empty">Loading…</p></div>
+    </section>
+  </aside>
+
+  <main class="stack" id="main">
+    <section class="panel"><p class="empty">Pick a task on the left.</p></section>
+  </main>
+
+  <div id="detailCol" class="stack"></div>
+</div>
+
+<script>
+// Span contents come from agents that read the web, so text is only ever inserted
+// with textContent, never as HTML.
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children.filter((c) => c !== null && c !== undefined && c !== false));
+  return node;
+};
+async function api(path) {
+  const res = await fetch(path);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || res.statusText);
+  return body;
+}
+
+const KINDS = ["segment", "node", "agent", "llm", "tool", "memory", "human"];
+const KIND_LABEL = { segment: "run segment", node: "graph node", agent: "agent", llm: "LLM call",
+                     tool: "tool", memory: "memory", human: "human review" };
+// Attributes shown as expandable blocks instead of in the key/value list.
+const BIG = ["llm.system", "llm.prompt", "llm.response", "llm.schema", "tool.input", "tool.output",
+             "agentorch.output", "agentorch.outputs", "memory.items", "agentorch.blocking_issues",
+             "agentorch.suggestions", "human.note"];
+const OPEN_BY_DEFAULT = ["llm.response", "tool.output", "agentorch.output", "human.note"];
+
+const state = { taskId: null, trace: null, byId: {}, collapsed: new Set(), hidden: new Set(),
+                selected: null, query: "" };
+
+const money = (v) => v == null ? "–" : v === 0 ? "$0" : v < 0.01 ? "$" + v.toFixed(4) : "$" + v.toFixed(3);
+function dur(ms) {
+  if (ms < 1) return "<1ms";
+  if (ms < 1000) return Math.round(ms) + "ms";
+  const s = ms / 1000;
+  if (s < 60) return s.toFixed(s < 10 ? 2 : 1) + "s";
+  const m = s / 60;
+  return m < 60 ? m.toFixed(1) + "m" : (m / 60).toFixed(1) + "h";
+}
+const tokens = (n) => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n);
+const color = (kind) => `var(--k-${KINDS.includes(kind) ? kind : "segment"})`;
+const dot = (kind) => el("span", { className: "dot", style: `background:${color(kind)}` });
+
+// ---------- task list ----------
+async function loadTasks() {
+  const box = $("tasks");
+  try {
+    const m = await api("/metrics?days=30");
+    $("totalCost").textContent = m.tasks.length ? "· " + money(m.total_cost_usd) + " / 30d" : "";
+    box.replaceChildren();
+    if (!m.tasks.length) { box.append(el("p", { className: "empty", textContent: "No traced tasks yet." })); return; }
+    for (const t of m.tasks) {
+      const when = new Date(t.started_at * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+      const b = el("button", { className: "item" + (t.task_id === state.taskId ? " active" : "") },
+        el("span", { className: "title", textContent: t.task_id }),
+        el("span", { className: "meta", textContent:
+          `${when} · ${t.task_type || "?"} · ${money(t.total_cost_usd)} · ${t.llm_calls} LLM` +
+          (t.escalations ? ` · ${t.escalations} escalation${t.escalations > 1 ? "s" : ""}` : "") }));
+      b.dataset.task = t.task_id;
+      b.onclick = () => openTask(t.task_id);
+      box.append(b);
+    }
+  } catch (e) {
+    box.replaceChildren(el("p", { className: "err", textContent: "Could not load tasks: " + e.message }));
+  }
+}
+
+// ---------- one trace ----------
+async function openTask(taskId) {
+  taskId = taskId.trim();
+  if (!taskId) return;
+  state.taskId = taskId; state.selected = null; state.collapsed = new Set();
+  history.replaceState(null, "", "?task=" + encodeURIComponent(taskId));
+  $("taskInput").value = taskId;
+  for (const b of document.querySelectorAll("#tasks .item"))
+    b.classList.toggle("active", b.dataset.task === taskId);
+  $("main").replaceChildren(el("section", { className: "panel" }, el("p", { className: "empty", textContent: "Loading trace…" })));
+  $("detailCol").replaceChildren();
+  try {
+    state.trace = await api("/tasks/" + encodeURIComponent(taskId) + "/trace");
+  } catch (e) {
+    $("main").replaceChildren(el("section", { className: "panel" }, el("p", { className: "err", textContent: e.message })));
+    return;
+  }
+  state.byId = {};
+  const index = (nodes, root) => nodes.forEach((n) => {
+    n._root = root || n; state.byId[n.span_id] = n; index(n.children, n._root);
+  });
+  index(state.trace.spans);
+  // Start with LLM calls folded into their agent so the shape of the run is visible.
+  for (const n of Object.values(state.byId))
+    if (n.kind === "agent" && n.children.length) state.collapsed.add(n.span_id);
+  renderMain();
+}
+
+function renderMain() {
+  const c = state.trace.cost;
+  const stats = el("div", { className: "stats" },
+    ...[["Cost", money(c.total_cost_usd)], ["LLM calls", c.llm_calls],
+        ["Tokens in / out", tokens(c.input_tokens) + " / " + tokens(c.output_tokens)],
+        ["Tool calls", c.tool_calls], ["Agent time", dur(c.agent_seconds * 1000)],
+        ["Human wait", dur(c.human_wait_seconds * 1000)], ["Escalations", c.escalations]]
+      .map(([l, v]) => el("div", { className: "stat" }, el("div", { className: "v", textContent: v }),
+                                                         el("div", { className: "l", textContent: l }))));
+
+  const roleRows = Object.entries(c.by_role).sort((a, b) => b[1].cost_usd - a[1].cost_usd);
+  const byRole = el("table", { className: "small" },
+    el("thead", {}, el("tr", {}, ...["Agent", "Calls", "In", "Out", "Cost"].map((h, i) =>
+      el("th", { className: i ? "n" : "", textContent: h })))),
+    el("tbody", {}, ...roleRows.map(([role, r]) => el("tr", {},
+      el("td", { textContent: role }), el("td", { className: "n", textContent: r.calls }),
+      el("td", { className: "n", textContent: tokens(r.input_tokens) }),
+      el("td", { className: "n", textContent: tokens(r.output_tokens) }),
+      el("td", { className: "n", textContent: money(r.cost_usd) })))));
+
+  const summary = el("section", { className: "panel" },
+    el("h2", {}, "Task ", el("span", { style: "text-transform:none;font-family:ui-monospace,Menlo,monospace",
+                                        textContent: state.taskId }),
+       c.task_type ? el("span", { className: "chip", style: "margin-left:8px;text-transform:none",
+                                   textContent: c.task_type }) : null),
+    stats,
+    roleRows.length ? el("details", { style: "margin-top:10px" },
+      el("summary", { className: "muted", textContent: "Cost by agent" }), byRole) : null);
+
+  const search = el("input", { type: "text", placeholder: "filter spans by name or text",
+                                value: state.query, style: "max-width:260px" });
+  search.oninput = () => { state.query = search.value.toLowerCase(); renderTree(); };
+  const kinds = el("div", { className: "kinds" }, ...KINDS.map((k) => {
+    const t = el("span", { className: "kind-toggle" + (state.hidden.has(k) ? " off" : ""),
+                            title: "show/hide " + KIND_LABEL[k], role: "button", tabIndex: 0 },
+                 dot(k), KIND_LABEL[k]);
+    t.onclick = t.onkeydown = (ev) => {
+      if (ev.type === "keydown" && ev.key !== "Enter" && ev.key !== " ") return;
+      ev.preventDefault();
+      state.hidden.has(k) ? state.hidden.delete(k) : state.hidden.add(k);
+      t.classList.toggle("off"); renderTree();
+    };
+    return t;
+  }));
+  const expand = el("button", { textContent: "Expand all", onclick: () => { state.collapsed.clear(); renderTree(); } });
+  const collapse = el("button", { textContent: "Collapse all", onclick: () => {
+    for (const n of Object.values(state.byId)) if (n.children.length) state.collapsed.add(n.span_id);
+    renderTree(); } });
+  const nextErr = el("button", { textContent: "Next error", onclick: jumpToError });
+
+  const treePanel = el("section", { className: "panel" },
+    el("div", { className: "row", style: "justify-content:space-between;margin-bottom:10px" },
+      el("h2", { style: "margin:0", textContent: "Trace" }),
+      el("div", { className: "row" }, search, expand, collapse, nextErr)),
+    kinds,
+    el("div", { className: "tree-head", style: "margin-top:10px" },
+      el("span", { textContent: "Span" }), el("span", { className: "bar-h", textContent: "Timeline (per segment)" }),
+      el("span", { className: "n", textContent: "Time" }), el("span", { className: "n", textContent: "Cost" })),
+    el("div", { className: "tree", id: "tree", role: "tree" }));
+  $("main").replaceChildren(summary, treePanel);
+  renderTree();
+}
+
+function spanText(n) {
+  return (n.name + " " + Object.values(n.attributes).join(" ") + " " + (n.error || "")).toLowerCase();
+}
+
+function renderTree() {
+  const tree = $("tree");
+  tree.replaceChildren();
+  const q = state.query;
+  // With a query, show matches plus their ancestors; ignore collapsing.
+  const matches = new Set();
+  if (q) {
+    const mark = (n) => { const hit = n.children.map(mark).some(Boolean) || spanText(n).includes(q);
+                          if (hit) matches.add(n.span_id); return hit; };
+    state.trace.spans.forEach(mark);
+  }
+  const walk = (nodes, depth) => {
+    for (const n of nodes) {
+      if (q && !matches.has(n.span_id)) continue;
+      const hiddenKind = state.hidden.has(n.kind);
+      if (!hiddenKind) tree.append(row(n, depth));
+      if (q || !state.collapsed.has(n.span_id)) walk(n.children, hiddenKind ? depth : depth + 1);
+    }
+  };
+  walk(state.trace.spans, 0);
+  if (!tree.children.length) tree.append(el("p", { className: "empty", textContent: "No spans match." }));
+}
+
+function row(n, depth) {
+  const root = n._root;
+  const span = Math.max(root.duration_ms, 0.001);
+  const left = Math.min(100, Math.max(0, (n.start_ms - root.start_ms) / span * 100));
+  const width = Math.min(100 - left, n.duration_ms / span * 100);
+  const hasKids = n.children.length > 0;
+  const collapsed = state.collapsed.has(n.span_id);
+  const twisty = el("span", { className: "twisty", textContent: hasKids ? (collapsed ? "▸" : "▾") : "" });
+  if (hasKids) twisty.onclick = (ev) => {
+    ev.stopPropagation();
+    collapsed ? state.collapsed.delete(n.span_id) : state.collapsed.add(n.span_id);
+    renderTree();
+  };
+  const a = n.attributes;
+  const tag = n.kind === "llm" ? [n.model, `${tokens(n.input_tokens)}→${tokens(n.output_tokens)}`].filter(Boolean).join(" · ")
+    : n.kind === "agent" && a["agentorch.subtask_id"] ? a["agentorch.subtask_id"]
+    : a["agentorch.paused"] ? "paused"
+    : n.kind === "human" && a["human.decision"] ? a["human.decision"]
+    : hasKids && collapsed ? `${countAll(n)} spans` : "";
+  const cost = n.subtree_cost_usd || n.cost_usd;
+  const r = el("div", { className: "span-row" + (n.status === "error" ? " error" : "") +
+                                   (state.selected === n.span_id ? " selected" : ""),
+                        role: "treeitem", tabIndex: 0,
+                        style: `border-left-color:${color(n.kind)}` },
+    el("span", { className: "label", style: `padding-left:${depth * 14}px` },
+      twisty, dot(n.kind), el("span", { className: "name", textContent: n.name, title: n.name }),
+      tag ? el("span", { className: "tag", textContent: tag }) : null,
+      n.status === "error" ? el("span", { className: "tag err", textContent: "error" }) : null),
+    el("span", { className: "bar-track" },
+      el("span", { className: "bar", style: `left:${left}%;width:${width}%;background:${color(n.kind)}` })),
+    el("span", { className: "num", textContent: dur(n.duration_ms) }),
+    el("span", { className: "num", textContent: cost ? money(cost) : "", title: "this span and everything under it" }));
+  r.dataset.span = n.span_id;
+  r.onclick = () => select(n.span_id);
+  r.onkeydown = (ev) => {
+    if (ev.key === "Enter") select(n.span_id);
+    if (ev.key === "ArrowDown") r.nextElementSibling?.focus();
+    if (ev.key === "ArrowUp") r.previousElementSibling?.focus();
+    if ((ev.key === "ArrowRight" && collapsed) || (ev.key === "ArrowLeft" && hasKids && !collapsed)) twisty.click();
+  };
+  return r;
+}
+const countAll = (n) => n.children.reduce((s, c) => s + 1 + countAll(c), 0);
+
+function jumpToError() {
+  const errors = Object.values(state.byId).filter((n) => n.status === "error")
+    .sort((a, b) => a.start_ms - b.start_ms);
+  if (!errors.length) return;
+  const i = errors.findIndex((n) => n.span_id === state.selected);
+  const next = errors[(i + 1) % errors.length];
+  // Unfold its ancestors so it's visible.
+  for (let p = state.byId[next.parent_span_id]; p; p = state.byId[p.parent_span_id]) state.collapsed.delete(p.span_id);
+  state.hidden.delete(next.kind);
+  select(next.span_id);
+  document.querySelector(`[data-span="${next.span_id}"]`)?.scrollIntoView({ block: "center" });
+}
+
+function select(spanId) {
+  state.selected = spanId;
+  for (const r of document.querySelectorAll(".span-row"))
+    r.classList.toggle("selected", r.dataset.span === spanId);
+  renderDetail(state.byId[spanId]);
+}
+
+function pretty(value) {
+  if (typeof value !== "string") return JSON.stringify(value, null, 2);
+  const t = value.trim();
+  if ((t.startsWith("{") || t.startsWith("[")) && t.length < 400000) {
+    try { return JSON.stringify(JSON.parse(t), null, 2); } catch { /* not JSON */ }
+  }
+  return value;
+}
+
+function renderDetail(n) {
+  const a = n.attributes;
+  const facts = [["kind", KIND_LABEL[n.kind] || n.kind], ["status", n.status],
+                 ["started", new Date(n.start_ms).toLocaleString()], ["duration", dur(n.duration_ms)]];
+  if (n.model) facts.push(["model", n.model]);
+  if (n.input_tokens || n.output_tokens) facts.push(["tokens", `${n.input_tokens} in · ${n.output_tokens} out`]);
+  if (n.cost_usd) facts.push(["cost", money(n.cost_usd)]);
+  if (n.subtree_cost_usd && n.subtree_cost_usd !== n.cost_usd) facts.push(["cost incl. children", money(n.subtree_cost_usd)]);
+  if (n.children.length) facts.push(["children", `${n.children.length} direct · ${countAll(n)} total`]);
+  const skip = new Set([...BIG, "agentorch.kind"]);
+  for (const [k, v] of Object.entries(a).sort()) if (!skip.has(k)) facts.push([k, typeof v === "string" ? v : JSON.stringify(v)]);
+
+  const dl = el("dl", { className: "attrs" });
+  for (const [k, v] of facts) dl.append(el("dt", { textContent: k }), el("dd", { textContent: String(v) }));
+
+  const blocks = BIG.filter((k) => a[k] != null && a[k] !== "").map((k) => {
+    const text = pretty(a[k]);
+    const copy = el("button", { textContent: "copy", style: "padding:0 6px;font-size:11px" });
+    copy.onclick = (ev) => { ev.preventDefault(); navigator.clipboard?.writeText(text);
+                             copy.textContent = "copied"; setTimeout(() => copy.textContent = "copy", 1200); };
+    return el("details", { className: "big", open: OPEN_BY_DEFAULT.includes(k) },
+      el("summary", {}, el("span", { textContent: `${k} · ${text.length.toLocaleString()} chars` }), copy),
+      el("pre", { textContent: text }));
+  });
+
+  $("detailCol").replaceChildren(el("section", { className: "panel" },
+    el("div", { className: "row", style: "justify-content:space-between;margin-bottom:8px" },
+      el("span", { className: "kind-badge" }, dot(n.kind),
+         el("strong", { textContent: n.name, style: "font-family:ui-monospace,Menlo,monospace;font-size:13px" })),
+      el("button", { textContent: "×", title: "close", onclick: () => {
+        state.selected = null; $("detailCol").replaceChildren();
+        document.querySelectorAll(".span-row.selected").forEach((r) => r.classList.remove("selected")); } })),
+    n.error ? el("pre", { className: "err", style: "margin-bottom:10px", textContent: n.error }) : null,
+    dl, ...blocks));
+}
+
+$("openTask").onclick = () => openTask($("taskInput").value);
+$("taskInput").onkeydown = (ev) => { if (ev.key === "Enter") openTask($("taskInput").value); };
+loadTasks().then(() => {
+  const initial = new URLSearchParams(location.search).get("task");
+  if (initial) openTask(initial);
+});
+</script>
+</body>
+</html>

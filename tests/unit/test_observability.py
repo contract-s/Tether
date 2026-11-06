@@ -129,3 +129,12 @@ def test_api_trace_cost_and_metrics(traced_task) -> None:
         assert list(m["agents_by_cost"])[0] in {"specialist", "reviewer", "supervisor"}
     finally:
         app.dependency_overrides.clear()
+
+
+def test_trace_explorer_page() -> None:
+    client = TestClient(app)
+    page = client.get("/dashboard/traces")
+    assert page.status_code == 200 and "Trace explorer" in page.text
+    # Span text comes from the web; the page must never insert it as HTML.
+    assert "innerHTML" not in page.text
+    assert "/dashboard/traces" in client.get("/dashboard/reviews").text

@@ -87,6 +87,7 @@
     <label class="row">Reviewer <input type="text" id="reviewer" placeholder="your name"
       style="width:140px"></label>
     <a href="/dashboard/memories">Memories</a>
+    <a href="/dashboard/traces">Traces</a>
     <a href="/docs">API</a>
   </nav>
 </header>
@@ -215,7 +216,8 @@ async function showTask(id) {
   const parts = [
     el("section", { className: "panel" },
       el("div", { className: "row" }, chip(t.status, t.status),
-         el("span", { className: "muted", textContent: `user ${t.user_id} · ${ago(t.created_at)}` })),
+         el("span", { className: "muted", textContent: `user ${t.user_id} · ${ago(t.created_at)}` }),
+         el("a", { href: `/dashboard/traces?task=${encodeURIComponent(t.id)}`, textContent: "View trace" })),
       el("h3", { textContent: t.task, style: "margin-top:8px" }),
       t.pending_review ? (() => { const b = el("button", { className: "primary",
         textContent: "Open the review waiting on you" });
