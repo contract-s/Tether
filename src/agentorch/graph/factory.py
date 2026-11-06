@@ -76,6 +76,7 @@ def postgres_checkpointer() -> BaseCheckpointSaver:
 
 
 def default_task_service():
+    from agentorch.hitl.assistant import ReviewAssistant
     from agentorch.hitl.notifier import LogNotifier, WebhookNotifier
     from agentorch.hitl.service import TaskService
     from agentorch.hitl.store import HitlStore, make_engine
@@ -86,4 +87,5 @@ def default_task_service():
         graph=default_workflow(checkpointer=postgres_checkpointer()),
         store=HitlStore(make_engine(settings.database_url)),
         notifier=notifier,
+        assistant=ReviewAssistant(AnthropicClient()),
     )

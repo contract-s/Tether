@@ -16,4 +16,4 @@ def health() -> dict[str, str]:
 
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    return RedirectResponse("/dashboard/memories")
+    return RedirectResponse("/dashboard/reviews")

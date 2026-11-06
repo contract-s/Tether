@@ -56,6 +56,7 @@ class Reviewer:
         result: SubtaskResult,
         evidence: list[ToolCallRecord] | None = None,
         dependency_outputs: dict[str, str] | None = None,
+        guidance: list[str] | None = None,
     ) -> ReviewOutcome:
         if not result.succeeded:
             # Nothing to review; send the failure straight back.
@@ -72,6 +73,11 @@ class Reviewer:
             f"<expected_output>\n{subtask.expected_output}\n</expected_output>\n\n"
             f"<deliverable>\n{result.output}\n</deliverable>"
         )
+        if guidance:
+            joined = "\n".join(f"- {g}" for g in guidance)
+            prompt += ("\n\n<human_guidance>\nThe person overseeing this task required "
+                       f"the following. Missing it is a blocking issue.\n{joined}\n"
+                       "</human_guidance>")
         for dep_id, output in (dependency_outputs or {}).items():
             # Already-reviewed outputs this subtask was built on count as evidence.
             prompt += (f"\n\n<accepted_input from_subtask=\"{dep_id}\">\n{output}\n"

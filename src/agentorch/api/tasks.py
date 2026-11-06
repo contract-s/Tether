@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from agentorch.hitl.escalation import Decision
@@ -13,6 +15,7 @@ from agentorch.hitl.service import InvalidDecision, ReviewNotPending, TaskServic
 from agentorch.hitl.store import ReviewRecord, TaskRecord
 
 router = APIRouter()
+REVIEW_UI = Path(__file__).parent / "static" / "review_dashboard.html"
 
 
 @lru_cache
@@ -71,12 +74,29 @@ class ReviewDetail(ReviewOut):
     past_decisions: list[ReviewOut]
 
 
+class MessageOut(BaseModel):
+    role: str
+    content: str
+    author: str | None
+    created_at: float
+
+
+class Question(BaseModel):
+    question: str = Field(min_length=1, max_length=4000)
+    author: str | None = None
+
+
 def _task(r: TaskRecord) -> TaskOut:
     return TaskOut.model_validate(r, from_attributes=True)
 
 
 def _review(r: ReviewRecord) -> ReviewOut:
     return ReviewOut.model_validate(r, from_attributes=True)
+
+
+@router.get("/dashboard/reviews", include_in_schema=False)
+def review_ui() -> FileResponse:
+    return FileResponse(REVIEW_UI)
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=202)
@@ -131,7 +151,8 @@ def get_review(review_id: str, service: Service) -> ReviewDetail:
     record = service.store.get_review(review_id)
     if record is None:
         raise HTTPException(404, "no such review")
-    past = service.store.past_decisions(record.user_id, record.trigger, exclude_id=record.id)
+    past = service.store.past_decisions(record.user_id, record.trigger, record.level,
+                                        exclude_id=record.id)
     return ReviewDetail(**_review(record).model_dump(), past_decisions=[_review(p) for p in past])
 
 
@@ -145,3 +166,19 @@ def decide(review_id: str, decision: Decision, service: Service) -> ReviewOut:
         raise HTTPException(409, str(e)) from None
     except InvalidDecision as e:
         raise HTTPException(422, str(e)) from None
+
+
+@router.get("/reviews/{review_id}/messages", response_model=list[MessageOut])
+def review_messages(review_id: str, service: Service) -> list[MessageOut]:
+    return [MessageOut.model_validate(m, from_attributes=True)
+            for m in service.store.messages(review_id)]
+
+
+@router.post("/reviews/{review_id}/ask", response_model=MessageOut)
+def ask_about_review(review_id: str, body: Question, service: Service) -> MessageOut:
+    """Ask the agents a question about a review before deciding."""
+    try:
+        answer = service.ask(review_id, body.question, body.author)
+    except KeyError:
+        raise HTTPException(404, "no such review") from None
+    return MessageOut.model_validate(answer, from_attributes=True)

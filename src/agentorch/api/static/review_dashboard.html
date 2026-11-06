@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentOrch Reviews</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --border: #e3e2dd; --accent: #2f5bd3; --accent-text: #ffffff; --danger: #c0392b;
+    --chip: #efeee9; --ok: #1e7a46; --warn: #a15c00; --code: #f2f1ec;
+    --agent: #eef2fd; --human: #f2f1ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ecebe6; --muted: #9b9a94;
+      --border: #33322e; --accent: #7b9bff; --accent-text: #10131c; --danger: #ff7b6b;
+      --chip: #2a2a27; --ok: #5fd08e; --warn: #f0b35a; --code: #262624;
+      --agent: #1f2638; --human: #2a2a27;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  header.top { display: flex; align-items: center; justify-content: space-between;
+               gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+               background: var(--panel); flex-wrap: wrap; }
+  header.top h1 { font-size: 17px; margin: 0; }
+  header.top nav { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px;
+            max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+           padding: 14px; }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+       margin: 0 0 10px; }
+  h3 { font-size: 15px; margin: 0 0 8px; }
+  textarea, input[type=text] { width: 100%; font: inherit; padding: 8px; border-radius: 6px;
+       border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  textarea.code { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .item { text-align: left; width: 100%; padding: 8px 10px; border-radius: 6px;
+          border: 1px solid var(--border); background: var(--bg); }
+  .item.active { border-color: var(--accent); }
+  .item .title { display: block; overflow: hidden; text-overflow: ellipsis;
+                 white-space: nowrap; }
+  .item .meta { display: block; color: var(--muted); font-size: 12px; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--chip);
+          font-size: 12px; white-space: nowrap; }
+  .chip.done { color: var(--ok); } .chip.awaiting_review, .chip.pending { color: var(--warn); }
+  .chip.failed, .chip.rejected, .chip.abandoned { color: var(--danger); }
+  .chip.level { background: var(--accent); color: var(--accent-text); }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); padding: 8px 0; }
+  pre { margin: 0; padding: 10px; background: var(--code); border-radius: 6px; overflow-x: auto;
+        white-space: pre-wrap; word-break: break-word;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .text { white-space: pre-wrap; word-break: break-word; }
+  .subtask { border-top: 1px solid var(--border); padding: 8px 0; }
+  .subtask:first-child { border-top: 0; padding-top: 0; }
+  details summary { cursor: pointer; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
+  .chat { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto;
+          margin-bottom: 10px; }
+  .msg { padding: 8px 10px; border-radius: 8px; max-width: 92%; white-space: pre-wrap;
+         word-break: break-word; }
+  .msg.human { background: var(--human); align-self: flex-end; }
+  .msg.agent { background: var(--agent); align-self: flex-start; }
+  #toast { min-height: 20px; color: var(--muted); white-space: pre-wrap; }
+  label.check { display: flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>AgentOrch · Review queue</h1>
+  <nav>
+    <label class="row">Reviewer <input type="text" id="reviewer" placeholder="your name"
+      style="width:140px"></label>
+    <a href="/dashboard/memories">Memories</a>
+    <a href="/docs">API</a>
+  </nav>
+</header>
+
+<div class="layout">
+  <aside class="stack">
+    <section class="panel">
+      <h2>New task</h2>
+      <textarea id="newTask" rows="3" placeholder="What should the agents do?"></textarea>
+      <div class="row" style="margin-top:8px; justify-content:space-between">
+        <label class="check"><input type="checkbox" id="requireReview" checked>
+          Let me approve the plan and answer</label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="newUser" value="default" style="width:120px" aria-label="User id">
+        <button class="primary" id="startTask">Start</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Waiting on you <span id="pendingCount" class="chip">0</span></h2>
+      <div class="list" id="queue"></div>
+    </section>
+    <section class="panel">
+      <h2>Recent tasks</h2>
+      <div class="list" id="tasks"></div>
+    </section>
+  </aside>
+
+  <main class="stack" id="detail">
+    <section class="panel"><p class="empty">Pick a review or task on the left.</p></section>
+  </main>
+</div>
+
+<script>
+// Everything shown here comes from agents that read the web, so text is only ever
+// inserted with textContent, never as HTML.
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children.filter((c) => c !== null && c !== undefined));
+  return node;
+};
+async function api(path, options = {}) {
+  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...options });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : res.statusText);
+  return body;
+}
+function ago(seconds) {
+  const s = Date.now() / 1000 - seconds;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+const label = (s) => String(s).replaceAll("_", " ");
+const chip = (text, cls = "") => el("span", { className: `chip ${cls}`, textContent: label(text) });
+const pretty = (v) => JSON.stringify(v, null, 2);
+
+const reviewerInput = $("reviewer");
+try { reviewerInput.value = localStorage.getItem("agentorch.reviewer") || ""; } catch {}
+reviewerInput.onchange = () => {
+  try { localStorage.setItem("agentorch.reviewer", reviewerInput.value); } catch {}
+};
+
+let selected = null; // {kind: "review"|"task", id}
+
+// --- sidebar ---------------------------------------------------------------
+
+async function refreshLists() {
+  const [queue, tasks] = await Promise.all([api("/reviews?status=pending"), api("/tasks")]);
+  $("pendingCount").textContent = queue.length;
+  $("queue").replaceChildren(...(queue.length ? queue.map((r) => {
+    const b = el("button", { className: "item" + (selected?.id === r.id ? " active" : "") },
+      el("span", { className: "title", textContent: r.reason }),
+      el("span", { className: "meta" }, chip(r.level, "level"), " ", ago(r.created_at)));
+    b.onclick = () => select("review", r.id);
+    return b;
+  }) : [el("p", { className: "empty", textContent: "Nothing needs you right now." })]));
+  $("tasks").replaceChildren(...(tasks.length ? tasks.slice(0, 15).map((t) => {
+    const b = el("button", { className: "item" + (selected?.id === t.id ? " active" : "") },
+      el("span", { className: "title", textContent: t.task }),
+      el("span", { className: "meta" }, chip(t.status, t.status), " ", ago(t.updated_at)));
+    b.onclick = () => select("task", t.id);
+    return b;
+  }) : [el("p", { className: "empty", textContent: "No tasks yet." })]));
+  return queue;
+}
+
+$("startTask").onclick = async () => {
+  const task = $("newTask").value.trim();
+  if (!task) return;
+  $("startTask").disabled = true;
+  try {
+    const t = await api("/tasks", { method: "POST", body: JSON.stringify({
+      task, user_id: $("newUser").value.trim() || "default",
+      require_review: $("requireReview").checked }) });
+    $("newTask").value = "";
+    await select("task", t.id);
+  } catch (e) { alert(`Could not start the task: ${e.message}`); }
+  finally { $("startTask").disabled = false; }
+};
+
+// --- detail ------------------------------------------------------------------
+
+async function select(kind, id) {
+  selected = { kind, id };
+  await refreshLists();
+  if (kind === "review") await showReview(id); else await showTask(id);
+}
+
+function progressPanel(progress) {
+  const entries = Object.entries(progress || {});
+  return el("section", { className: "panel" }, el("h2", { textContent: "Progress" }),
+    entries.length ? el("div", {}, ...entries.map(([id, p]) => el("div", { className: "subtask" },
+      el("div", { className: "row" }, el("strong", { textContent: id }), chip(p.specialist),
+         chip(p.status, p.status)),
+      el("div", { className: "text", textContent: p.description }),
+      p.output ? el("details", {}, el("summary", { textContent: "Output" }),
+                    el("div", { className: "text", textContent: p.output })) : null)))
+    : el("p", { className: "empty", textContent: "No plan yet." }));
+}
+
+async function showTask(id) {
+  const t = await api(`/tasks/${encodeURIComponent(id)}`);
+  const parts = [
+    el("section", { className: "panel" },
+      el("div", { className: "row" }, chip(t.status, t.status),
+         el("span", { className: "muted", textContent: `user ${t.user_id} · ${ago(t.created_at)}` })),
+      el("h3", { textContent: t.task, style: "margin-top:8px" }),
+      t.pending_review ? (() => { const b = el("button", { className: "primary",
+        textContent: "Open the review waiting on you" });
+        b.onclick = () => select("review", t.pending_review); return b; })() : null,
+      t.error ? el("p", { style: "color:var(--danger)", textContent: t.error }) : null),
+  ];
+  if (t.final_output) parts.push(el("section", { className: "panel" },
+    el("h2", { textContent: "Final answer" }), el("div", { className: "text", textContent: t.final_output })));
+  parts.push(progressPanel(t.progress));
+  if (t.escalations.length || t.notifications.length) parts.push(el("section", { className: "panel" },
+    el("h2", { textContent: "Human involvement" }),
+    ...t.escalations.map((e) => el("p", {}, chip(e.level, "level"), " ", e.reason, " → ",
+      el("strong", { textContent: e.resolution }),
+      e.reviewer ? ` by ${e.reviewer}` : "", e.note ? ` (“${e.note}”)` : "")),
+    ...t.notifications.map((n) => el("p", { className: "muted" }, chip("notify"), " ", n.reason))));
+  $("detail").replaceChildren(...parts);
+}
+
+async function showReview(id) {
+  const [r, messages] = await Promise.all([
+    api(`/reviews/${encodeURIComponent(id)}`),
+    api(`/reviews/${encodeURIComponent(id)}/messages`)]);
+  const q = r.request;
+  const proposed = q.proposed || {};
+  const pending = r.status === "pending";
+
+  // What the human can edit depends on the decision level.
+  let editor = null, editorLabel = "";
+  if (q.level === "approve_plan") {
+    editorLabel = "Edit the plan (JSON) — used by Modify";
+    editor = el("textarea", { className: "code", rows: 14, value: pretty(q.plan) });
+  } else if (q.level === "approve_action" && proposed.tool) {
+    editorLabel = "Tool input (JSON) — edit it, then Modify to run your version";
+    editor = el("textarea", { className: "code", rows: 6, value: pretty(proposed.tool_input) });
+  } else if (q.level === "approve_action") {
+    editorLabel = "Answer — edit it, then Modify to deliver your version";
+    editor = el("textarea", { rows: 10, value: proposed.output || "" });
+  } else if (q.level === "take_over") {
+    editorLabel = "Your output — used by Take over";
+    editor = el("textarea", { rows: 8, value: proposed.output || "" });
+  }
+  const note = el("input", { type: "text", placeholder: "Note or guidance for the agents (optional)" });
+  const status = el("div", { id: "toast" });
+
+  async function decide(action) {
+    const body = { action, reviewer: reviewerInput.value.trim() || null,
+                   note: note.value.trim() || null };
+    try {
+      if (action === "modify" && q.level === "approve_plan") body.plan = JSON.parse(editor.value);
+      else if (action === "modify" && proposed.tool) body.tool_input = JSON.parse(editor.value);
+      else if (action === "modify" || action === "take_over") body.output = editor.value;
+    } catch { status.textContent = "That JSON doesn't parse. Fix it and try again."; return; }
+    if (["reject", "abort"].includes(action) && !confirm(`${label(action)} — are you sure?`)) return;
+    buttons.forEach((b) => (b.disabled = true));
+    status.textContent = "Sending…";
+    try {
+      await api(`/reviews/${encodeURIComponent(id)}/decision`,
+                { method: "POST", body: JSON.stringify(body) });
+      status.textContent = "Decision recorded. The agents are continuing.";
+      setTimeout(() => select("task", r.task_id), 800);
+    } catch (e) {
+      status.textContent = `Not accepted: ${e.message}`;
+      buttons.forEach((b) => (b.disabled = false));
+    }
+  }
+  const primary = { approve: true, accept: true };
+  const buttons = (pending ? q.options : []).map((opt) => {
+    const b = el("button", { textContent: label(opt),
+      className: primary[opt] ? "primary" : ["reject", "abort"].includes(opt) ? "danger" : "" });
+    b.onclick = () => decide(opt);
+    return b;
+  });
+
+  const decisionPanel = el("section", { className: "panel" },
+    el("div", { className: "row" }, chip(q.level, "level"), chip(q.trigger),
+       chip(r.status, r.status), el("span", { className: "muted", textContent: ago(r.created_at) })),
+    el("h3", { textContent: q.reason, style: "margin-top:8px" }),
+    el("p", { className: "muted", textContent: `Task: ${q.task}` }),
+    el("h2", { textContent: "Proposed", style: "margin-top:14px" }),
+    el("p", {}, el("strong", { textContent: proposed.summary || "—" })),
+    proposed.reasoning ? el("div", {}, el("div", { className: "muted", textContent: "Agent's reasoning" }),
+                            el("div", { className: "text", textContent: proposed.reasoning })) : null,
+    proposed.tool ? el("p", {}, "Tool: ", el("code", { textContent: proposed.tool })) : null,
+    !editor && proposed.output ? el("div", { className: "text", textContent: proposed.output }) : null,
+    editor && pending ? el("div", { style: "margin-top:10px" },
+      el("div", { className: "muted", textContent: editorLabel }), editor) : null,
+    editor && !pending && proposed.output ? el("div", { className: "text", textContent: proposed.output }) : null,
+    pending ? el("div", { style: "margin-top:10px" }, note) : null,
+    pending ? el("div", { className: "row", style: "margin-top:10px" }, ...buttons) : null,
+    r.decision ? el("p", {}, "Decided: ", el("strong", { textContent: r.decision.action }),
+      r.reviewer ? ` by ${r.reviewer}` : "", r.decision.note ? ` (“${r.decision.note}”)` : "") : null,
+    status);
+
+  // Chat with the agents about this decision.
+  const chatLog = el("div", { className: "chat" }, ...messages.map((m) =>
+    el("div", { className: `msg ${m.role}`, textContent: m.content })));
+  if (!messages.length) chatLog.append(el("p", { className: "empty",
+    textContent: "Ask why the agents want this, what the risks are, or what each option would do." }));
+  const question = el("input", { type: "text", placeholder: "Ask the agents a question…" });
+  const send = el("button", { textContent: "Ask" });
+  async function ask() {
+    const text = question.value.trim();
+    if (!text) return;
+    chatLog.querySelector(".empty")?.remove();
+    chatLog.append(el("div", { className: "msg human", textContent: text }));
+    const thinking = el("div", { className: "msg agent muted", textContent: "Thinking…" });
+    chatLog.append(thinking);
+    chatLog.scrollTop = chatLog.scrollHeight;
+    question.value = ""; send.disabled = true;
+    try {
+      const answer = await api(`/reviews/${encodeURIComponent(id)}/ask`, { method: "POST",
+        body: JSON.stringify({ question: text, author: reviewerInput.value.trim() || null }) });
+      thinking.className = "msg agent"; thinking.textContent = answer.content;
+    } catch (e) { thinking.textContent = `Couldn't get an answer: ${e.message}`; }
+    finally { send.disabled = false; chatLog.scrollTop = chatLog.scrollHeight; }
+  }
+  send.onclick = ask;
+  question.onkeydown = (e) => { if (e.key === "Enter") ask(); };
+  const chatPanel = el("section", { className: "panel" }, el("h2", { textContent: "Ask the agents" }),
+    chatLog, el("div", { className: "row" }, el("div", { style: "flex:1" }, question), send));
+
+  const context = el("div", { className: "grid2" },
+    el("section", { className: "panel" }, el("h2", { textContent: "Memories used for planning" }),
+      q.memories.length ? el("div", { className: "list" }, ...q.memories.map((m) =>
+        el("div", { className: "text", textContent: m }))) :
+        el("p", { className: "empty", textContent: "None." })),
+    el("section", { className: "panel" }, el("h2", { textContent: "Past decisions like this" }),
+      r.past_decisions.length ? el("div", { className: "list" }, ...r.past_decisions.map((p) =>
+        el("div", {}, el("strong", { textContent: p.decision?.action || "?" }),
+           ` — ${p.reason}`, p.decision?.note ? ` (“${p.decision.note}”)` : "",
+           el("span", { className: "muted", textContent: ` · ${p.reviewer || "unknown"}, ${ago(p.resolved_at)}` })))) :
+        el("p", { className: "empty", textContent: "No earlier decisions of this kind." })));
+
+  const fullPlan = q.level !== "approve_plan" && q.plan ? el("section", { className: "panel" },
+    el("details", {}, el("summary", { textContent: "Full plan" }),
+       el("pre", { textContent: pretty(q.plan) }))) : null;
+  $("detail").replaceChildren(
+    ...[decisionPanel, chatPanel, progressPanel(q.progress), context, fullPlan].filter(Boolean));
+}
+
+// Keep the lists fresh, and follow a running task until it needs you or finishes.
+async function poll() {
+  try {
+    const queue = await refreshLists();
+    if (selected?.kind === "task") {
+      const t = await api(`/tasks/${encodeURIComponent(selected.id)}`);
+      if (t.pending_review && queue.some((r) => r.id === t.pending_review)) {
+        await select("review", t.pending_review);
+      } else if (!document.activeElement || document.activeElement === document.body) {
+        await showTask(selected.id);
+      }
+    }
+  } catch (e) { /* server restarting; try again next tick */ }
+}
+setInterval(poll, 4000);
+refreshLists().then((queue) => { if (queue.length) select("review", queue[0].id); })
+  .catch((e) => { $("detail").replaceChildren(el("section", { className: "panel" },
+    el("p", { textContent: `Could not reach the API: ${e.message}` }))); });
+</script>
+</body>
+</html>

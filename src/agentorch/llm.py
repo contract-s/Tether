@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from agentorch.config import settings
 
-Role = Literal["supervisor", "specialist", "reviewer", "memory"]
+Role = Literal["supervisor", "specialist", "reviewer", "memory", "explainer"]
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 T = TypeVar("T", bound=BaseModel)
@@ -86,6 +86,7 @@ def route_for(role: Role) -> ModelRoute:
         "specialist": ModelRoute("anthropic", settings.specialist_model, "medium"),
         "reviewer": ModelRoute("anthropic", settings.reviewer_model, "medium"),
         "memory": ModelRoute("anthropic", settings.specialist_model, "low"),
+        "explainer": ModelRoute("anthropic", settings.specialist_model, "low"),
     }
     return routes[role]
 

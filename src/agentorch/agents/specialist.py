@@ -69,6 +69,7 @@ class SpecialistAgent:
         dependency_outputs: dict[str, str] | None = None,
         reviewer_feedback: str | None = None,
         context: ToolContext | None = None,
+        guidance: list[str] | None = None,
     ) -> SpecialistRun:
         run = SpecialistRun(SubtaskResult(subtask_id=subtask.id, output="", succeeded=False))
         context = context or ToolContext(caller=self.specialist, subtask_id=subtask.id)
@@ -76,7 +77,8 @@ class SpecialistAgent:
         system = system_prompt(self.specialist)
         messages: list[dict[str, Any]] = [{
             "role": "user",
-            "content": self._task_prompt(subtask, dependency_outputs or {}, reviewer_feedback),
+            "content": self._task_prompt(subtask, dependency_outputs or {}, reviewer_feedback,
+                                         guidance or []),
         }]
 
         while run.turns < self.max_turns:
@@ -134,7 +136,10 @@ class SpecialistAgent:
 
     @staticmethod
     def _task_prompt(
-        subtask: Subtask, dependency_outputs: dict[str, str], feedback: str | None
+        subtask: Subtask,
+        dependency_outputs: dict[str, str],
+        feedback: str | None,
+        guidance: list[str] | None = None,
     ) -> str:
         parts = [
             f"<subtask id=\"{subtask.id}\">\n{subtask.description}\n</subtask>",
@@ -145,10 +150,17 @@ class SpecialistAgent:
             parts.append(f"<required_inputs>\n{joined}\n</required_inputs>")
         for dep_id, output in dependency_outputs.items():
             parts.append(f"<input_from subtask=\"{dep_id}\">\n{output}\n</input_from>")
+        if guidance:
+            joined = "\n".join(f"- {g}" for g in guidance)
+            parts.append(
+                "<human_guidance>\nThe person overseeing this task asked for the following. "
+                f"Follow it; it overrides the plan where they conflict.\n{joined}\n"
+                "</human_guidance>"
+            )
         if feedback:
             parts.append(
-                "<reviewer_feedback>\nA previous attempt was rejected. Fix these issues:\n"
-                f"{feedback}\n</reviewer_feedback>"
+                "<feedback_on_previous_attempt>\nThis subtask was attempted before. Act on "
+                f"this:\n{feedback}\n</feedback_on_previous_attempt>"
             )
         return "\n\n".join(parts)
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Float, String, Text, create_engine, select
+from sqlalchemy import JSON, Boolean, Float, Integer, String, Text, create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -51,6 +51,19 @@ class ReviewRecord(Base):
     reviewer: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[float] = mapped_column(Float)
     resolved_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ReviewMessage(Base):
+    """The reviewer's Q&A with the agents about a review."""
+
+    __tablename__ = "review_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    review_id: Mapped[str] = mapped_column(String(160), index=True)
+    role: Mapped[str] = mapped_column(String(16))  # human | agent
+    content: Mapped[str] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[float] = mapped_column(Float)
 
 
 def make_engine(url: str) -> Engine:
@@ -146,13 +159,29 @@ class HitlStore:
             record.resolved_at = time.time()
             return record
 
+    def add_message(
+        self, review_id: str, role: str, content: str, author: str | None = None
+    ) -> ReviewMessage:
+        message = ReviewMessage(review_id=review_id, role=role, content=content,
+                                author=author, created_at=time.time())
+        with self._session.begin() as s:
+            s.add(message)
+        return message
+
+    def messages(self, review_id: str) -> list[ReviewMessage]:
+        q = (select(ReviewMessage).where(ReviewMessage.review_id == review_id)
+             .order_by(ReviewMessage.id))
+        with self._session() as s:
+            return list(s.scalars(q))
+
     def past_decisions(
-        self, user_id: str, trigger: str, exclude_id: str | None = None, limit: int = 5
+        self, user_id: str, trigger: str, level: str, exclude_id: str | None = None,
+        limit: int = 5,
     ) -> list[ReviewRecord]:
         """Earlier resolved reviews of the same kind for this user (precedent for reviewers)."""
         q = (select(ReviewRecord)
              .where(ReviewRecord.user_id == user_id, ReviewRecord.trigger == trigger,
-                    ReviewRecord.status == "resolved")
+                    ReviewRecord.level == level, ReviewRecord.status == "resolved")
              .order_by(ReviewRecord.resolved_at.desc()).limit(limit))
         if exclude_id:
             q = q.where(ReviewRecord.id != exclude_id)

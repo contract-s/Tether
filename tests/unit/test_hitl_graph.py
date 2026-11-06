@@ -221,3 +221,28 @@ def test_escalation_context_includes_plan_progress_and_memories() -> None:
     assert p["plan"]["subtasks"][0]["id"] == "t1"
     assert set(p["progress"]) == {"t1", "t2", "t3"}
     assert p["id"].endswith("-esc1") and p["task"] == "x"
+
+
+def test_plan_review_note_reaches_every_specialist_and_the_reviewer() -> None:
+    class Recording(PlainLLM):
+        def __init__(self) -> None:
+            super().__init__(plan=make_plan(confidence=0.4))
+            self.prompts: list[str] = []
+
+        def chat(self, role, system, messages, tools):
+            if role == "specialist":
+                self.prompts.append(messages[0]["content"])
+            return super().chat(role, system, messages, tools)
+
+        def structured(self, role, system, prompt, schema):
+            if role == "reviewer":
+                self.prompts.append(prompt)
+            return super().structured(role, system, prompt, schema)
+
+    llm = Recording()
+    graph, config, _ = make_graph(llm)
+    graph.invoke({"task": "x"}, config)
+    graph.invoke(Command(resume={"action": "approve", "note": "cross-check on PyPI"}), config)
+
+    assert len(llm.prompts) == 6  # 3 specialists + 3 reviews
+    assert all("<human_guidance>" in p and "cross-check on PyPI" in p for p in llm.prompts)

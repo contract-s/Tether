@@ -153,3 +153,14 @@ def test_past_decisions_give_reviewers_precedent(api) -> None:
     [review] = client.get("/reviews").json()
     past = client.get(f"/reviews/{review['id']}").json()["past_decisions"]
     assert [p["decision"]["note"] for p in past] == ["second", "first"]
+
+
+def test_past_decisions_only_match_the_same_level() -> None:
+    service, _, _ = make_service(PlainLLM())
+    service.start("x", user_id="alice", require_review=True)
+    [plan_review] = service.store.list_reviews(status="pending")
+    service.decide(plan_review.id, Decision(action="approve"))
+    [final_review] = service.store.list_reviews(status="pending")
+    assert final_review.trigger == plan_review.trigger  # both user_requested
+    assert service.store.past_decisions("alice", final_review.trigger, final_review.level,
+                                        exclude_id=final_review.id) == []

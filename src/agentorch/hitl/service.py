@@ -18,9 +18,10 @@ from typing import Any
 from langgraph.types import Command
 
 from agentorch.agents.planning import validate_plan
+from agentorch.hitl.assistant import ReviewAssistant
 from agentorch.hitl.escalation import OPTIONS, ApprovalLevel, Decision
 from agentorch.hitl.notifier import LogNotifier, Notifier
-from agentorch.hitl.store import HitlStore, ReviewRecord, TaskRecord
+from agentorch.hitl.store import HitlStore, ReviewMessage, ReviewRecord, TaskRecord
 
 log = logging.getLogger(__name__)
 
@@ -42,10 +43,12 @@ class TaskService:
         store: HitlStore,
         notifier: Notifier | None = None,
         submit: Submit | None = None,
+        assistant: ReviewAssistant | None = None,
     ) -> None:
         self.graph = graph
         self.store = store
         self.notifier = notifier or LogNotifier()
+        self.assistant = assistant
         # Background by default; tests pass `lambda fn: fn()` to run inline.
         self._submit = submit or ThreadPoolExecutor(max_workers=4).submit
         self._locks: dict[str, threading.Lock] = {}
@@ -78,6 +81,18 @@ class TaskService:
         resume = Command(resume=decision.model_dump(mode="json", exclude_none=True))
         self._submit(lambda: self._advance(review.task_id, resume))
         return resolved
+
+    def ask(self, review_id: str, question: str, author: str | None = None) -> ReviewMessage:
+        """Answer a reviewer's question about a review, keeping the conversation."""
+        if self.assistant is None:
+            raise RuntimeError("no assistant configured")
+        review = self.store.get_review(review_id)
+        if review is None:
+            raise KeyError(review_id)
+        history = [(m.role, m.content) for m in self.store.messages(review_id)]
+        self.store.add_message(review_id, "human", question, author)
+        answer, _usage = self.assistant.answer(review.request, history, question)
+        return self.store.add_message(review_id, "agent", answer)
 
     def state(self, task_id: str) -> dict[str, Any]:
         return dict(self.graph.get_state(self._config(task_id)).values)

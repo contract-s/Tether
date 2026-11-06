@@ -116,6 +116,7 @@ class WorkflowState(TypedDict, total=False):
 
     approvals: Annotated[dict[str, PendingApproval], merge]
     preapproved: Annotated[list[str], operator.add]  # action_key()s a human approved
+    guidance: Annotated[list[str], operator.add]  # notes from plan reviews, for every subtask
     escalations: Annotated[list[Escalation], operator.add]
     notifications: Annotated[list[EscalationRequest], operator.add]
     usage: Annotated[list[LLMUsage], operator.add]
@@ -197,6 +198,8 @@ def build_workflow(
         if decision.action == "reject":
             return {**update, "status": "rejected",
                     "error": decision.note or "plan rejected by human"}
+        if decision.note:
+            update["guidance"] = [decision.note]
         if decision.action == "modify":
             assert decision.plan is not None
             batches = validate_plan(decision.plan)  # checked again by the API before resuming
@@ -221,6 +224,7 @@ def build_workflow(
             subtask,
             dependency_outputs=payload["dependency_outputs"],
             reviewer_feedback=payload["feedback"],
+            guidance=payload["guidance"],
             context=ToolContext(caller=subtask.specialist, task_id=task_id,
                                 subtask_id=subtask.id, working_memory=wm,
                                 preapproved=frozenset(payload["preapproved"])),
@@ -228,6 +232,7 @@ def build_workflow(
         review = agents.reviewer.review(
             subtask, run.result, evidence=run.tool_calls,
             dependency_outputs=payload["dependency_outputs"],
+            guidance=payload["guidance"],
         )
         approvals = {
             f"{task_id}-{subtask.id}-{c.id}": PendingApproval(
@@ -412,6 +417,7 @@ def build_workflow(
                 "attempt": state.get("attempts", {}).get(sid, 0) + 1,
                 "feedback": state.get("feedback", {}).get(sid),
                 "preapproved": list(state.get("preapproved", [])),
+                "guidance": list(state.get("guidance", [])),
                 "dependency_outputs": {
                     dep: state["results"][dep].output
                     for dep in subtask.depends_on

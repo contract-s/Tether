@@ -16,7 +16,7 @@
 - [x] Escalation triggers: low plan confidence, 2x specialist failure, sensitive ops, low review score, user request
 - [x] Approval queue: pause, package context, notify, resume on decision
 - [x] Approval levels: Notify / Approve action / Approve plan / Take over
-- [ ] Review UI with context, proposed action, memories, actions, and chat panel
+- [x] Review UI with context, proposed action, memories, actions, and chat panel
 
 ## Phase 4: Observability (Days 10-12)
 - [ ] OpenTelemetry trace tree for every execution
