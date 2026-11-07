@@ -116,3 +116,20 @@ def test_delete_user_forgets_everything(ltm) -> None:
     ltm.add("bob", "t2", [MemoryItem(kind=MemoryKind.FACT, text="c")])
     assert ltm.delete_user("alice") == 2
     assert ltm.list("alice") == [] and len(ltm.list("bob")) == 1
+
+
+def test_preferences_are_found_from_further_away_than_task_memories() -> None:
+    class Fixed:
+        """'task' points one way; the memories sit at cosine distance 0.78 from it."""
+
+        def embed(self, texts):
+            far = [0.22, math.sqrt(1 - 0.22**2)]
+            return [[1.0, 0.0] if t == "task" else far for t in texts]
+
+    store = LongTermMemory(chromadb.EphemeralClient(), Fixed(),
+                           collection=f"t-{uuid.uuid4().hex}")
+    store.add("u", "old", [MemoryItem(kind=MemoryKind.PREFERENCE, text="TL;DR first"),
+                           MemoryItem(kind=MemoryKind.APPROACH, text="research in parallel")])
+    found = store.search("u", "task")
+    assert [m.kind for m in found] == [MemoryKind.PREFERENCE]
+    assert abs(found[0].distance - 0.78) < 0.01

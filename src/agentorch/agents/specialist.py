@@ -8,8 +8,10 @@ from typing import Any
 
 from agentorch.agents.schemas import Specialist, Subtask, SubtaskResult
 from agentorch.agents.supervisor import SPECIALIST_DESCRIPTIONS
+from agentorch.config import settings
 from agentorch.hitl.escalation import action_key
 from agentorch.llm import LLMClient, LLMUsage, ToolCall
+from agentorch.observability.cost import llm_cost
 from agentorch.observability.tracing import clip, mark_error, set_attributes, span
 from agentorch.tools.registry import (
     ApprovalRequiredError,
@@ -20,7 +22,11 @@ from agentorch.tools.registry import (
     ToolRegistry,
 )
 
-MAX_TOOL_RESULT_CHARS = 30_000
+MAX_TOOL_RESULT_CHARS = 12_000
+BUDGET_MESSAGE = (
+    "Not run: this subtask has used its budget. Make no more tool calls. Write your "
+    "deliverable now from what you already have, and say exactly what is missing."
+)
 
 
 def system_prompt(specialist: Specialist) -> str:
@@ -36,7 +42,10 @@ requested. A reviewer will check your work against the expected output, so:
 instead of guessing.
 - Some actions need human approval. If a tool reports that, briefly say why you need \
 the action, then finish the rest of the subtask without it and state what was not done. \
-A human will review the request."""
+A human will review the request.
+- Tool results are cut off at about {MAX_TOOL_RESULT_CHARS:,} characters. Prefer focused \
+searches and sources over paging through large raw files or data dumps, and stop \
+searching once you have what the subtask needs: each attempt has a spending limit."""
 
 
 @dataclass
@@ -49,6 +58,12 @@ class SpecialistRun:
     # tool call id -> what the agent said right before asking (its reasoning).
     approval_reasons: dict[str, str] = field(default_factory=dict)
     turns: int = 0
+    over_budget: bool = False
+
+    @property
+    def cost_usd(self) -> float:
+        return sum(llm_cost(u.model, u.input_tokens, u.output_tokens,
+                            u.cache_read_input_tokens) or 0.0 for u in self.usage)
 
 
 class SpecialistAgent:
@@ -58,11 +73,15 @@ class SpecialistAgent:
         llm: LLMClient,
         registry: ToolRegistry,
         max_turns: int = 12,
+        budget_usd: float | None = None,
     ) -> None:
         self.specialist = specialist
         self.llm = llm
         self.registry = registry
         self.max_turns = max_turns
+        # Model spend per attempt. Past it, tool calls are refused and the agent must
+        # answer with what it has (tools that call models themselves aren't counted).
+        self.budget_usd = settings.specialist_budget_usd if budget_usd is None else budget_usd
 
     def run(self, subtask: Subtask, **kwargs: Any) -> SpecialistRun:
         """Run the subtask (see `_run`), traced as one `specialist.run` span."""
@@ -76,6 +95,7 @@ class SpecialistAgent:
                 "agentorch.turns": run.turns, "agentorch.tool_calls": len(run.tool_calls),
                 "agentorch.succeeded": run.result.succeeded,
                 "agentorch.pending_approvals": len(run.pending_approvals),
+                "agentorch.over_budget": run.over_budget,
                 "agentorch.output": clip(run.result.output),
             })
             if not run.result.succeeded:
@@ -107,8 +127,13 @@ class SpecialistAgent:
             messages.append({"role": "assistant", "content": turn.content})
 
             if turn.stop_reason == "tool_use" and turn.tool_calls:
+                if run.over_budget:  # already told to stop, and asked for tools anyway
+                    break
+                run.over_budget = run.cost_usd >= self.budget_usd
                 # All results go back in a single user message.
-                results = [self._execute(call, run, context, turn.text) for call in turn.tool_calls]
+                results = [_tool_error(call.id, BUDGET_MESSAGE) if run.over_budget
+                           else self._execute(call, run, context, turn.text)
+                           for call in turn.tool_calls]
                 messages.append({"role": "user", "content": results})
                 continue
             if turn.stop_reason == "pause_turn":
@@ -124,7 +149,8 @@ class SpecialistAgent:
                 run.result.error = "agent finished without producing output"
             return run
 
-        run.result.error = f"gave up after {self.max_turns} turns"
+        run.result.error = (f"stopped at its ${self.budget_usd:.2f} budget" if run.over_budget
+                            else f"gave up after {self.max_turns} turns")
         return run
 
     def _execute(
@@ -150,7 +176,8 @@ class SpecialistAgent:
             return _tool_error(call.id, record.error or "tool failed")
         content = json.dumps(record.output, ensure_ascii=False)
         if len(content) > MAX_TOOL_RESULT_CHARS:
-            content = content[:MAX_TOOL_RESULT_CHARS] + " [truncated]"
+            content = (content[:MAX_TOOL_RESULT_CHARS]
+                       + f" [truncated: {len(content):,} characters in all]")
         return {"type": "tool_result", "tool_use_id": call.id, "content": content}
 
     @staticmethod

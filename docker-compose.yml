@@ -1,6 +1,53 @@
-# Infrastructure for local development. App services (API, workers, UIs)
-# get added here as they're built (Phase 6).
+# The whole system: `make stack` (docker compose up -d --build), then open
+#   http://localhost:8000/dashboard/reviews   review queue (+ memory, traces, replay)
+#   http://localhost:16686                    Jaeger
+# For local development, `make up` starts only the infrastructure and `make api`
+# runs the API on your machine against it.
+
+x-app: &app
+  build: .
+  image: agentorch:latest
+  env_file:
+    - path: .env # ANTHROPIC_API_KEY and any overrides
+      required: false
+  environment: &app-env
+    DATABASE_URL: postgresql+psycopg://agentorch:agentorch@postgres:5432/agentorch
+    REDIS_URL: redis://redis:6379/0
+    CHROMA_HOST: chromadb
+    CHROMA_PORT: "8000"
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    TASK_RUNNER: celery
+    WORKSPACE_DIR: /app/data/workspace
+  volumes:
+    - workspace:/app/data/workspace
+    - modelcache:/home/app/.cache/chroma
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    chromadb: { condition: service_started }
+  restart: unless-stopped
+
 services:
+  api:
+    <<: *app
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 5
+
+  worker:
+    <<: *app
+    command: ["celery", "-A", "agentorch.workers", "worker", "--loglevel=info", "--concurrency=4"]
+    # code_exec starts throwaway sandbox containers, so the worker talks to the host's
+    # Docker. Access to the socket is root-equivalent on the host: the worker runs as root
+    # and is the only service that gets it. The sandboxes themselves are locked down.
+    user: root
+    volumes:
+      - workspace:/app/data/workspace
+      - modelcache:/home/app/.cache/chroma
+      - /var/run/docker.sock:/var/run/docker.sock
+
   postgres:
     image: postgres:16
     environment:
@@ -17,6 +64,10 @@ services:
   redis:
     image: redis:7
     ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
 
   chromadb:
     image: chromadb/chroma:1.5.9 # keep in step with the chromadb client in uv.lock
@@ -24,7 +75,6 @@ services:
     volumes: [chromadata:/data]
 
   jaeger:
-    # Trace viewer for OpenTelemetry spans until the custom trace explorer exists
     image: jaegertracing/all-in-one:latest
     ports:
       - "16686:16686" # UI
@@ -33,3 +83,5 @@ services:
 volumes:
   pgdata:
   chromadata:
+  workspace:
+  modelcache:

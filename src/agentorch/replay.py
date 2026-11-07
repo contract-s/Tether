@@ -164,7 +164,7 @@ class ReplayService:
             fork_time=_ts(snap.created_at), changes=changes.summary())
         self.graph.update_state(TaskService._config(new_id), values, as_node=as_node)
         self._seed_working_memory(new_id, values)
-        self.tasks._submit(lambda: self.tasks._advance(new_id, None))
+        self.tasks.dispatch(new_id, {"kind": "continue"})
         return record
 
     def _fork_state(self, values: dict[str, Any], ran: str, changes: ReplayChanges,

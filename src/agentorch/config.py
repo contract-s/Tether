@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     workspace_dir: str = "data/workspace"
     sandbox_image: str = "python:3.11-slim"
     sandbox_timeout_seconds: int = 30
+    # Model spend allowed per specialist attempt before its tools are switched off.
+    specialist_budget_usd: float = 0.40
+
+    # Where task runs happen: "thread" (inside the API process) or "celery" (workers).
+    task_runner: str = "thread"
+    task_visibility_timeout_seconds: int = 3600
 
     # Observability: spans also go to an OTLP collector (e.g. Jaeger) when this is set.
     otel_exporter_otlp_endpoint: str = ""

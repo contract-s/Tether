@@ -25,10 +25,10 @@
 - [x] Replay system with step-through and input modification
 
 ## Phase 5: Integration and testing (Days 12-13)
-- [ ] Showcase demo scenario (research → extraction → analysis → summary)
-- [ ] Full docker-compose: API, Redis, Postgres, ChromaDB, Celery, both UIs
-- [ ] End-to-end tests (valid plans, tool use, reviewer catches bad output, memory helps, escalation fires, failure recovery)
+- [x] Showcase demo scenario (research → extraction → analysis → summary)
+- [x] Full docker-compose: API, Redis, Postgres, ChromaDB, Celery, both UIs
+- [x] End-to-end tests (valid plans, tool use, reviewer catches bad output, memory helps, escalation fires, failure recovery)
 
 ## Phase 6: Polish (Days 13-14)
-- [ ] Demo video (under 5 minutes)
-- [ ] Architecture diagram and write-up
+- [ ] Demo video (under 5 minutes): script in [DEMO.md](DEMO.md), recording to do
+- [x] Architecture diagram and write-up ([ARCHITECTURE.md](ARCHITECTURE.md))

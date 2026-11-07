@@ -112,6 +112,36 @@ def test_specialist_stops_after_max_turns() -> None:
     assert not run.result.succeeded and "3 turns" in run.result.error
 
 
+PRICED = LLMUsage("claude-sonnet-5-5", 100_000, 1_000)  # $0.21 a turn
+
+
+def priced(turn: ModelTurn) -> ModelTurn:
+    turn.usage = PRICED
+    return turn
+
+
+def test_over_budget_the_tools_are_switched_off_and_it_must_answer() -> None:
+    llm = ScriptedLLM(
+        priced(tool_turn(ToolCall("c1", "add", {"a": 1, "b": 1}))),  # under budget: runs
+        priced(tool_turn(ToolCall("c2", "add", {"a": 2, "b": 2}))),  # over: refused
+        final_turn("2, and I ran out of budget for the rest"),
+    )
+    run = SpecialistAgent(Specialist.ANALYSIS, llm, make_registry(), budget_usd=0.3).run(SUBTASK)
+
+    assert run.result.succeeded and run.over_budget
+    assert len(run.tool_calls) == 1
+    refused = llm.sent[2][-1]["content"][0]
+    assert refused["is_error"] and "budget" in refused["content"]
+
+
+def test_asking_for_tools_again_after_the_budget_ends_the_attempt() -> None:
+    loop = [priced(tool_turn(ToolCall(f"c{i}", "add", {"a": 1, "b": 1}))) for i in range(4)]
+    run = SpecialistAgent(Specialist.ANALYSIS, ScriptedLLM(*loop), make_registry(),
+                          budget_usd=0.3).run(SUBTASK)
+    assert not run.result.succeeded and "budget" in run.result.error
+    assert run.turns == 3 and len(run.tool_calls) == 1
+
+
 def test_feedback_and_dependency_outputs_reach_the_prompt() -> None:
     llm = ScriptedLLM(final_turn("done"))
     SpecialistAgent(Specialist.ANALYSIS, llm, make_registry()).run(
@@ -181,8 +211,8 @@ def test_reviewer_evidence_matches_what_the_specialist_saw() -> None:
             latency_ms=1.0, started_at=datetime.now(UTC),
         )
 
-    # A 20k-char result reaches the reviewer whole (the old 4k cut hid most of it).
-    assert "[truncated" not in rv._format_evidence([record(20_000)])
+    # A result the specialist saw whole reaches the reviewer whole.
+    assert "[truncated" not in rv._format_evidence([record(10_000)])
     # Past the total cap, the reviewer is told not to block on what it can't see.
-    many = rv._format_evidence([record(25_000) for _ in range(10)])
+    many = rv._format_evidence([record(25_000) for _ in range(20)])
     assert rv.EVIDENCE_CUT_NOTE in many

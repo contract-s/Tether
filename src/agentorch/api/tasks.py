@@ -11,7 +11,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from agentorch.hitl.escalation import Decision
-from agentorch.hitl.service import InvalidDecision, ReviewNotPending, TaskService
+from agentorch.hitl.service import (
+    InvalidDecision,
+    NotRetryable,
+    ReviewNotPending,
+    TaskService,
+)
 from agentorch.hitl.store import ReviewRecord, TaskRecord
 
 router = APIRouter()
@@ -138,6 +143,17 @@ def get_task(task_id: str, service: Service) -> TaskDetail:
         escalations=[e.model_dump(mode="json") for e in state.get("escalations", [])],
         notifications=[n.model_dump(mode="json") for n in state.get("notifications", [])],
     )
+
+
+@router.post("/tasks/{task_id}/retry", response_model=TaskOut, status_code=202)
+def retry_task(task_id: str, service: Service) -> TaskOut:
+    """Carry on a failed task from its last checkpoint (finished work is kept)."""
+    try:
+        return _task(service.retry(task_id))
+    except KeyError:
+        raise HTTPException(404, "no such task") from None
+    except NotRetryable as e:
+        raise HTTPException(409, str(e)) from None
 
 
 @router.get("/reviews", response_model=list[ReviewOut])

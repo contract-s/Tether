@@ -37,6 +37,10 @@ class ChromaDefaultEmbedder:
         return [list(map(float, v)) for v in self._fn(texts)]
 
 
+# How far a preference may be from the task and still be used (see search()).
+PREFERENCE_MAX_DISTANCE = 0.85
+
+
 class LongTermMemory:
     def __init__(self, client: Any, embedder: Embedder, collection: str = COLLECTION) -> None:
         self._embedder = embedder
@@ -108,8 +112,9 @@ class LongTermMemory:
 
         Candidates must be within `max_distance` (cosine). The 0.7 cutoff is calibrated
         for all-MiniLM-L6-v2: related memories land around 0.45-0.66, near-duplicates of
-        the task under 0.2. Candidates are then ranked by similarity blended with
-        importance.
+        the task under 0.2. Preferences ("start every summary with a TL;DR") apply across
+        topics, so they sit further from any one task (around 0.65-0.8) and get a looser
+        cutoff. Candidates are then ranked by similarity blended with importance.
         """
         if self._col.count() == 0:
             return []
@@ -125,7 +130,8 @@ class LongTermMemory:
                 res["ids"][0], res["documents"][0], res["metadatas"][0], res["distances"][0],
                 strict=True,
             )
-            if dist <= max_distance
+            if dist <= (max(max_distance, PREFERENCE_MAX_DISTANCE)
+                        if meta.get("kind") == MemoryKind.PREFERENCE.value else max_distance)
         ]
         candidates.sort(key=lambda m: scoring.rank_score(m.distance, m.importance), reverse=True)
         found = candidates[:k]

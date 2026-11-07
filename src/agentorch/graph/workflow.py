@@ -37,6 +37,7 @@ from typing import Annotated, Any, Literal, TypedDict
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send, interrupt
@@ -44,7 +45,14 @@ from pydantic import BaseModel
 
 from agentorch.agents.planning import InvalidPlanError, validate_plan
 from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.schemas import ExecutionPlan, ReviewVerdict, Specialist, SubtaskResult
+from agentorch.agents.schemas import (
+    Complexity,
+    ExecutionPlan,
+    ReviewVerdict,
+    Specialist,
+    Subtask,
+    SubtaskResult,
+)
 from agentorch.agents.specialist import SpecialistAgent
 from agentorch.agents.supervisor import Supervisor
 from agentorch.config import settings
@@ -57,8 +65,9 @@ from agentorch.hitl.escalation import (
     Trigger,
     action_key,
 )
-from agentorch.llm import LLMUsage
+from agentorch.llm import LLMUsage, ToolCall
 from agentorch.memory.long_term import StoredMemory
+from agentorch.memory.long_term_types import MemoryKind
 from agentorch.memory.service import MemoryServices
 from agentorch.observability.tracing import mark_error, set_attributes, tracer
 from agentorch.tools.registry import ToolCallRecord, ToolContext
@@ -130,6 +139,19 @@ class WorkflowState(TypedDict, total=False):
     # Set on runs forked from another task's checkpoint (see `agentorch.replay`).
     replay_of: str | None  # source task id; replays never write long-term memories
     reuse_memories: bool  # plan with the source's memories instead of retrieving again
+
+
+# Our types that live in checkpoints. LangGraph only restores types it is told about
+# (unknown ones log a warning today and will be refused in a later version).
+CHECKPOINT_TYPES: list[type] = [
+    ExecutionPlan, Subtask, Specialist, Complexity, SubtaskResult, ReviewVerdict,
+    Escalation, EscalationRequest, ProposedAction, PendingApproval, ApprovalLevel, Trigger,
+    LLMUsage, ToolCall, ToolCallRecord, StoredMemory, MemoryKind,
+]
+
+
+def checkpoint_serde() -> JsonPlusSerializer:
+    return JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
 
 
 @dataclass
@@ -466,7 +488,7 @@ def build_workflow(
     graph.add_conditional_edges("human_final", after_human_final, ["deliver", END])
     graph.add_edge("deliver", END)
 
-    return graph.compile(checkpointer=checkpointer or InMemorySaver())
+    return graph.compile(checkpointer=checkpointer or InMemorySaver(serde=checkpoint_serde()))
 
 
 # --- helpers -----------------------------------------------------------------

@@ -4,6 +4,14 @@ start() -> the graph runs until it finishes or pauses at a human step.
 On a pause, the escalation becomes a pending review, the reviewer is notified, and the
 task waits (no thread is held; the state lives in the checkpointer).
 decide() -> records the decision and resumes the run from the checkpoint.
+
+Work is handed to a dispatcher as (task_id, payload), where the payload is plain JSON:
+    {"kind": "start", "input": {...}}       first run
+    {"kind": "resume", "review_id": ..., "value": {...}}   a human's decision
+    {"kind": "continue"}                    carry on from the last checkpoint
+By default a thread pool runs it in this process; with Celery a worker does (see
+agentorch.workers). run() is safe to call twice for the same payload, so a worker that
+dies mid-run can have its message redelivered: the run picks up from the last checkpoint.
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ from agentorch.observability.tracing import (
 log = logging.getLogger(__name__)
 
 Submit = Callable[[Callable[[], None]], Any]
+Dispatch = Callable[[str, dict[str, Any]], Any]
 
 
 class ReviewNotPending(Exception):
@@ -40,6 +49,10 @@ class ReviewNotPending(Exception):
 
 
 class InvalidDecision(Exception):
+    pass
+
+
+class NotRetryable(Exception):
     pass
 
 
@@ -51,6 +64,7 @@ class TaskService:
         notifier: Notifier | None = None,
         submit: Submit | None = None,
         assistant: ReviewAssistant | None = None,
+        dispatch: Dispatch | None = None,
     ) -> None:
         self.graph = graph
         self.store = store
@@ -58,6 +72,9 @@ class TaskService:
         self.assistant = assistant
         # Background by default; tests pass `lambda fn: fn()` to run inline.
         self._submit = submit or ThreadPoolExecutor(max_workers=4).submit
+        # Where runs go: this process (via submit) unless another dispatcher is given.
+        self.dispatch: Dispatch = dispatch or (
+            lambda task_id, payload: self._submit(lambda: self.run(task_id, payload)))
         self._locks: dict[str, threading.Lock] = {}
         self._locks_guard = threading.Lock()
 
@@ -69,7 +86,7 @@ class TaskService:
         task_id = uuid.uuid4().hex
         record = self.store.create_task(task_id, user_id, task, require_review)
         inp = {"task": task, "user_id": user_id, "require_review": require_review}
-        self._submit(lambda: self._advance(task_id, inp))
+        self.dispatch(task_id, {"kind": "start", "input": inp})
         return record
 
     def decide(self, review_id: str, decision: Decision) -> ReviewRecord:
@@ -86,9 +103,63 @@ class TaskService:
         resolved = self.store.resolve_review(review_id, decision.model_dump(mode="json"))
         self._trace_review(resolved)
         self.store.update_task(review.task_id, status="running")
-        resume = Command(resume=decision.model_dump(mode="json", exclude_none=True))
-        self._submit(lambda: self._advance(review.task_id, resume))
+        self.dispatch(review.task_id, {
+            "kind": "resume", "review_id": review_id,
+            "value": decision.model_dump(mode="json", exclude_none=True)})
         return resolved
+
+    def retry(self, task_id: str) -> TaskRecord:
+        """Carry on a failed or stalled task from its last checkpoint.
+
+        The step that crashed runs again; finished work (including parallel subtasks
+        that completed before the crash) is kept, not redone.
+        """
+        record = self.store.get_task(task_id)
+        if record is None:
+            raise KeyError(task_id)
+        if record.status not in ("failed", "running", "queued"):
+            raise NotRetryable(f"task is {record.status}")
+        if not self.graph.get_state(self._config(task_id)).next:
+            raise NotRetryable("the run has no step left to retry")
+        self.store.update_task(task_id, status="running", error=None)
+        self.dispatch(task_id, {"kind": "continue"})
+        return self.store.get_task(task_id)  # type: ignore[return-value]
+
+    def recover_stalled(self) -> list[str]:
+        """Restart runs left 'running' by a crash (single-process mode, at startup)."""
+        stalled = [t.id for t in self.store.list_tasks(limit=1000)
+                   if t.status in ("running", "queued")]
+        for task_id in stalled:
+            if self.graph.get_state(self._config(task_id)).values:
+                self.dispatch(task_id, {"kind": "continue"})
+            else:  # never got going: nothing was checkpointed
+                record = self.store.get_task(task_id)
+                assert record is not None
+                self.dispatch(task_id, {"kind": "start", "input": {
+                    "task": record.task, "user_id": record.user_id,
+                    "require_review": record.require_review}})
+        if stalled:
+            log.warning("recovering %d stalled task(s): %s", len(stalled), stalled)
+        return stalled
+
+    def run(self, task_id: str, payload: dict[str, Any]) -> None:
+        """Do one dispatched piece of work. Repeating a payload is harmless."""
+        kind = payload["kind"]
+        snapshot = self.graph.get_state(self._config(task_id))
+        paused = self._current_interrupt(task_id, snapshot)
+        if kind not in ("start", "resume", "continue"):
+            raise ValueError(f"unknown payload kind {kind!r}")
+        inp: Any = None  # None = carry on from the last checkpoint
+        if kind == "start" and not snapshot.values:
+            inp = payload["input"]
+        elif kind == "resume" and paused is not None and paused.get("id") == payload["review_id"]:
+            inp = Command(resume=payload["value"])
+        if inp is None and (paused is not None or (snapshot.values and not snapshot.next)):
+            # Already finished, or waiting on a human (perhaps this very decision was
+            # applied before a crash and the run paused again): just mirror it.
+            self._sync(task_id)
+            return
+        self._advance(task_id, inp)
 
     def ask(self, review_id: str, question: str, author: str | None = None) -> ReviewMessage:
         """Answer a reviewer's question about a review, keeping the conversation."""
@@ -114,9 +185,10 @@ class TaskService:
             flush()  # make the segment visible in the trace explorer right away
 
     def _advance_traced(self, task_id: str, inp: Any) -> None:
-        resumed = isinstance(inp, Command)
+        name = ("task.resume" if isinstance(inp, Command) else
+                "task.continue" if inp is None else "task.start")
         with self._lock(task_id), tracer().start_as_current_span(
-            "task.resume" if resumed else "task.start", context=task_context(task_id),
+            name, context=task_context(task_id),
             record_exception=False, set_status_on_exception=False,
         ) as s:
             s.set_attribute("agentorch.kind", "segment")

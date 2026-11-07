@@ -11,7 +11,7 @@ from agentorch.agents.reviewer import Reviewer
 from agentorch.agents.specialist import SpecialistAgent
 from agentorch.agents.supervisor import Supervisor
 from agentorch.config import settings
-from agentorch.graph.workflow import Agents, build_workflow
+from agentorch.graph.workflow import Agents, build_workflow, checkpoint_serde
 from agentorch.llm import AnthropicClient, LLMClient
 from agentorch.memory.extractor import MemoryExtractor
 from agentorch.memory.long_term import ChromaDefaultEmbedder, LongTermMemory
@@ -78,17 +78,17 @@ def setup_default_tracing(engine=None) -> None:
                   otlp_endpoint=settings.otel_exporter_otlp_endpoint)
 
 
-def postgres_checkpointer() -> BaseCheckpointSaver:
+def postgres_checkpointer(database_url: str | None = None) -> BaseCheckpointSaver:
     """Durable checkpoints, so a run paused for review survives restarts."""
     from langgraph.checkpoint.postgres import PostgresSaver
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
 
-    url = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
+    url = (database_url or settings.database_url).replace("postgresql+psycopg://", "postgresql://")
     pool = ConnectionPool(url, max_size=10, open=True,
                           kwargs={"autocommit": True, "prepare_threshold": 0,
                                   "row_factory": dict_row})
-    saver = PostgresSaver(pool)
+    saver = PostgresSaver(pool, serde=checkpoint_serde())
     saver.setup()
     return saver
 
@@ -103,9 +103,17 @@ def default_task_service():
                 else LogNotifier())
     engine = make_engine(settings.database_url)
     setup_default_tracing(engine)
+    dispatch = None
+    if settings.task_runner == "celery":
+        from agentorch.workers import celery_dispatch
+
+        dispatch = celery_dispatch
+    elif settings.task_runner != "thread":
+        raise ValueError(f"TASK_RUNNER must be 'thread' or 'celery', not {settings.task_runner!r}")
     return TaskService(
         graph=default_workflow(checkpointer=postgres_checkpointer()),
         store=HitlStore(engine),
         notifier=notifier,
         assistant=ReviewAssistant(TracingLLM(AnthropicClient())),
+        dispatch=dispatch,
     )

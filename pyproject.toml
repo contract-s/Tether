@@ -65,6 +65,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = ["live: calls the real Claude API (opt in with AGENTORCH_LIVE=1)"]
 
 [tool.mypy]
 python_version = "3.11"
