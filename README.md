@@ -351,3 +351,5 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for how the build progressed, phase by ph
 ## Author
 
 **Sai Siddharth Kodali**
+
+Built with the help of [Claude Code](https://claude.com/claude-code).
