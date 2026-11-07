@@ -5,18 +5,18 @@ import uuid
 import chromadb
 import fakeredis
 
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.agents.supervisor import Supervisor
-from agentorch.graph.workflow import Agents, build_workflow
-from agentorch.llm import StructuredResult
-from agentorch.memory.extractor import ExtractedMemories, MemoryExtractor
-from agentorch.memory.long_term import LongTermMemory, MemoryItem, MemoryKind
-from agentorch.memory.service import MemoryServices
-from agentorch.memory.working import WorkingMemory
-from agentorch.tools.registry import ToolRegistry
 from tests.unit.test_memory import BagOfWordsEmbedder
 from tests.unit.test_workflow import USAGE, FakeLLM, make_plan
+from tether.agents.reviewer import Reviewer
+from tether.agents.specialist import SpecialistAgent
+from tether.agents.supervisor import Supervisor
+from tether.graph.workflow import Agents, build_workflow
+from tether.llm import StructuredResult
+from tether.memory.extractor import ExtractedMemories, MemoryExtractor
+from tether.memory.long_term import LongTermMemory, MemoryItem, MemoryKind
+from tether.memory.service import MemoryServices
+from tether.memory.working import WorkingMemory
+from tether.tools.registry import ToolRegistry
 
 
 class MemoryAwareLLM(FakeLLM):
@@ -105,7 +105,7 @@ def test_working_memory_is_filled_during_the_task_and_cleared_after() -> None:
         Supervisor.synthesize = original
     assert seen["snap"]["plan"]["goal"] == "g"
     assert set(seen["snap"]["results"]) == {"t1", "t2", "t3"}
-    assert redis_client.keys(f"agentorch:wm:{tid}:*") == []
+    assert redis_client.keys(f"tether:wm:{tid}:*") == []
 
 
 def test_memory_failures_never_fail_the_task() -> None:

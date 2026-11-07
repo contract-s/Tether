@@ -6,17 +6,17 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.agents.supervisor import Supervisor
-from agentorch.api import tasks as tasks_api
-from agentorch.api.main import app
-from agentorch.graph.workflow import Agents, build_workflow
-from agentorch.hitl.escalation import Decision
-from agentorch.hitl.service import NotRetryable, TaskService
-from agentorch.hitl.store import HitlStore, make_engine
-from agentorch.tools.registry import ToolRegistry
 from tests.unit.test_workflow import FakeLLM, make_plan
+from tether.agents.reviewer import Reviewer
+from tether.agents.specialist import SpecialistAgent
+from tether.agents.supervisor import Supervisor
+from tether.api import tasks as tasks_api
+from tether.api.main import app
+from tether.graph.workflow import Agents, build_workflow
+from tether.hitl.escalation import Decision
+from tether.hitl.service import NotRetryable, TaskService
+from tether.hitl.store import HitlStore, make_engine
+from tether.tools.registry import ToolRegistry
 
 
 class WorkerDied(BaseException):

@@ -31,12 +31,12 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: agentorch
-          POSTGRES_PASSWORD: agentorch
-          POSTGRES_DB: agentorch
+          POSTGRES_USER: tether
+          POSTGRES_PASSWORD: tether
+          POSTGRES_DB: tether
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U agentorch" --health-interval 5s --health-retries 10
+          --health-cmd "pg_isready -U tether" --health-interval 5s --health-retries 10
       redis:
         image: redis:7
         ports: ["6379:6379"]
@@ -46,7 +46,7 @@ jobs:
         image: chromadb/chroma:1.5.9
         ports: ["8001:8000"]
     env:
-      AGENTORCH_REQUIRE_INFRA: "1"
+      TETHER_REQUIRE_INFRA: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -69,4 +69,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t agentorch:ci .
+      - run: docker build -t tether:ci .

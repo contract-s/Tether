@@ -3,13 +3,13 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from agentorch.api import tasks as tasks_api
-from agentorch.api.main import app
-from agentorch.hitl.escalation import Decision
-from agentorch.hitl.service import InvalidDecision, ReviewNotPending, TaskService
-from agentorch.hitl.store import HitlStore, make_engine
 from tests.unit.test_hitl_graph import ActionLLM, PlainLLM, make_graph
 from tests.unit.test_workflow import make_plan
+from tether.api import tasks as tasks_api
+from tether.api.main import app
+from tether.hitl.escalation import Decision
+from tether.hitl.service import InvalidDecision, ReviewNotPending, TaskService
+from tether.hitl.store import HitlStore, make_engine
 
 
 class RecordingNotifier:

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tether Replay</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+    --border: #e3e2dd; --accent: #2f5bd3; --accent-text: #ffffff; --danger: #c0392b;
+    --chip: #efeee9; --ok: #1e7a46; --warn: #a15c00; --code: #f2f1ec; --hover: #f0efea;
+    --add: #e3f4e8; --del: #fbe6e3; --changed: #fff4d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ecebe6; --muted: #9b9a94;
+      --border: #33322e; --accent: #7b9bff; --accent-text: #10131c; --danger: #ff7b6b;
+      --chip: #2a2a27; --ok: #5fd08e; --warn: #f0b35a; --code: #262624; --hover: #282826;
+      --add: #17321f; --del: #3a1d1a; --changed: #3a3016;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  header.top { display: flex; align-items: center; justify-content: space-between;
+               gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border);
+               background: var(--panel); flex-wrap: wrap; }
+  header.top h1 { font-size: 17px; margin: 0; }
+  header.top nav { display: flex; gap: 14px; flex-wrap: wrap; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; padding: 16px;
+            max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+           padding: 14px; min-width: 0; }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+       margin: 0 0 10px; }
+  h3 { font-size: 15px; margin: 0 0 8px; }
+  input[type=text], textarea { width: 100%; font: inherit; padding: 6px 8px; border-radius: 6px;
+       border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  textarea { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+  textarea.edited, input.edited { border-color: var(--warn); }
+  button { font: inherit; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .between { justify-content: space-between; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--chip);
+          font-size: 12px; white-space: nowrap; }
+  .chip.done { color: var(--ok); } .chip.failed, .chip.rejected { color: var(--danger); }
+  .chip.awaiting_review, .chip.running, .chip.queued, .chip.paused { color: var(--warn); }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  .err { color: var(--danger); white-space: pre-wrap; }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  pre { margin: 0; padding: 10px; background: var(--code); border-radius: 6px; overflow: auto;
+        max-height: 420px; white-space: pre-wrap; word-break: break-word;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  label.check { display: flex; gap: 6px; align-items: center; }
+  .field { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+  .field > span { font-size: 12px; color: var(--muted); }
+
+  /* steps */
+  .steps { position: relative; display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 260px);
+           overflow-y: auto; }
+  @media (max-width: 860px) { .steps { max-height: 320px; } }
+  .stepbtn { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px; text-align: left;
+             padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; background: none; }
+  .stepbtn:hover { background: var(--hover); }
+  .stepbtn.active { border-color: var(--accent); background: var(--hover); }
+  .stepbtn .n { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; padding-top: 1px; }
+  .stepbtn .what { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .stepbtn .keys { display: block; color: var(--muted); font-size: 11px; overflow: hidden;
+                   text-overflow: ellipsis; white-space: nowrap; }
+
+  details.key { border: 1px solid var(--border); border-radius: 6px; margin-top: 6px; }
+  details.key summary { cursor: pointer; padding: 5px 10px; font-family: ui-monospace, Menlo, monospace;
+                        font-size: 12px; }
+  details.key.changed summary { background: var(--changed); border-radius: 6px; }
+  details.key[open] summary { border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; }
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+  .ba.one { grid-template-columns: 1fr; }
+  @media (max-width: 1000px) { .ba { grid-template-columns: 1fr; } }
+  .ba .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-bottom: 2px; }
+
+  /* compare */
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  table.cmp th, table.cmp td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: right;
+                               vertical-align: top; }
+  table.cmp th:first-child, table.cmp td:first-child { text-align: left; }
+  .better { color: var(--ok); } .worse { color: var(--danger); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 1000px) { .two { grid-template-columns: 1fr; } }
+  .diff { font: 12px/1.45 ui-monospace, Menlo, monospace; background: var(--code); border-radius: 6px;
+          padding: 8px 0; max-height: 420px; overflow: auto; }
+  .diff div { padding: 0 10px; white-space: pre-wrap; word-break: break-word; }
+  .diff .a { background: var(--add); } .diff .d { background: var(--del); } .diff .h { color: var(--muted); }
+  .replayItem { border-top: 1px solid var(--border); padding: 8px 0; }
+  .replayItem:first-child { border-top: 0; padding-top: 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Tether · Step through &amp; replay</h1>
+  <nav>
+    <a href="/dashboard/reviews">Reviews</a>
+    <a href="/dashboard/traces" id="traceLink">Traces</a>
+    <a href="/dashboard/memories">Memories</a>
+    <a href="/docs">API</a>
+  </nav>
+</header>
+
+<div class="layout">
+  <aside class="stack">
+    <section class="panel">
+      <h2>Task</h2>
+      <div class="row">
+        <input type="text" id="taskInput" placeholder="task id" aria-label="Task id" style="flex:1">
+        <button id="openTask">Open</button>
+      </div>
+      <p class="small muted" id="taskInfo" style="margin:8px 0 0"></p>
+    </section>
+    <section class="panel">
+      <div class="row between" style="margin-bottom:8px">
+        <h2 style="margin:0">Steps</h2>
+        <div class="row">
+          <button id="prevStep" title="Previous step (k or ↑)">↑</button>
+          <button id="nextStep" title="Next step (j or ↓)">↓</button>
+        </div>
+      </div>
+      <div class="steps" id="steps"><p class="empty">Open a task.</p></div>
+    </section>
+  </aside>
+
+  <main class="stack" id="main">
+    <section class="panel"><p class="empty">Open a task to step through its run, or a replay to compare it.</p></section>
+  </main>
+</div>
+
+<script>
+// State and outputs come from agents that read the web, so text is only ever inserted
+// with textContent, never as HTML.
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children.filter((c) => c !== null && c !== undefined && c !== false));
+  return node;
+};
+async function api(path, options = {}) {
+  const res = await fetch(path, { headers: { "content-type": "application/json" }, ...options });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail
+                                : body.detail ? JSON.stringify(body.detail) : res.statusText);
+  return body;
+}
+const money = (v) => v == null ? "–" : "$" + v.toFixed(v < 0.01 ? 4 : 3);
+const tokens = (n) => n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n);
+const pretty = (v) => typeof v === "string" ? v : JSON.stringify(v, null, 2);
+const when = (t) => new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "medium" });
+const chip = (text, cls = "") => el("span", { className: "chip " + cls, textContent: text });
+
+const S = { taskId: null, task: null, steps: [], index: -1, state: null, poll: null };
+
+// ---------- loading a task ----------
+async function openTask(taskId) {
+  taskId = taskId.trim();
+  if (!taskId) return;
+  clearInterval(S.poll);
+  S.taskId = taskId; S.index = -1;
+  $("taskInput").value = taskId;
+  $("traceLink").href = "/dashboard/traces?task=" + encodeURIComponent(taskId);
+  history.replaceState(null, "", "?task=" + encodeURIComponent(taskId));
+  $("steps").replaceChildren(el("p", { className: "empty", textContent: "Loading…" }));
+  try {
+    [S.task, S.steps] = await Promise.all([
+      api("/tasks/" + encodeURIComponent(taskId)),
+      api("/tasks/" + encodeURIComponent(taskId) + "/steps")]);
+  } catch (e) {
+    $("steps").replaceChildren(el("p", { className: "err", textContent: e.message }));
+    $("main").replaceChildren();
+    return;
+  }
+  $("taskInfo").replaceChildren(chip(S.task.status, S.task.status), " ",
+    el("span", { textContent: S.task.task }));
+  renderSteps();
+  // Start on the plan step if there is one: it's usually the interesting place to fork.
+  const planAt = S.steps.findIndex((s) => s.ran.includes("plan"));
+  await selectStep(planAt >= 0 ? planAt : S.steps.length - 1);
+}
+
+function describe(step) {
+  const ran = step.ran.join(", ");
+  const next = step.next.length ? step.next.join(", ") : "end";
+  return `${ran} → ${next}`;
+}
+
+function renderSteps() {
+  $("steps").replaceChildren(...S.steps.map((s, i) => {
+    const b = el("button", { className: "stepbtn" + (i === S.index ? " active" : "") },
+      el("span", { className: "n", textContent: "#" + s.step }),
+      el("span", {},
+        el("span", { className: "what", textContent: describe(s) }),
+        s.paused ? el("span", { className: "chip paused", style: "margin-left:6px", textContent: "paused for human", title: "The run stopped here for a human decision" }) : null,
+        el("span", { className: "keys", textContent: s.changed.length ? "changed: " + s.changed.join(", ") : "no state change" })));
+    b.onclick = () => selectStep(i);
+    return b;
+  }));
+}
+
+async function selectStep(i) {
+  if (i < 0 || i >= S.steps.length) return;
+  S.index = i;
+  [...$("steps").children].forEach((b, j) => b.classList.toggle("active", j === i));
+  const list = $("steps"), btn = list.children[i];
+  if (btn && (btn.offsetTop < list.scrollTop || btn.offsetTop + btn.offsetHeight > list.scrollTop + list.clientHeight))
+    list.scrollTop = btn.offsetTop - list.clientHeight / 2;
+  const step = S.steps[i];
+  try {
+    S.state = await api(`/tasks/${encodeURIComponent(S.taskId)}/steps/${encodeURIComponent(step.checkpoint_id)}`);
+  } catch (e) {
+    $("main").replaceChildren(el("section", { className: "panel" }, el("p", { className: "err", textContent: e.message })));
+    return;
+  }
+  renderStep(step);
+}
+
+// ---------- one step ----------
+function renderStep(step) {
+  const { values, previous } = S.state;
+  const changed = new Set(step.changed);
+  const keyBlock = (k, open) => {
+    const isChanged = changed.has(k);
+    const body = isChanged && previous[k] !== undefined
+      ? el("div", { className: "ba" },
+          el("div", {}, el("div", { className: "lbl", textContent: "before" }), el("pre", { textContent: pretty(previous[k]) })),
+          el("div", {}, el("div", { className: "lbl", textContent: "after" }), el("pre", { textContent: pretty(values[k]) })))
+      : el("div", { className: "ba one" }, el("pre", { textContent: values[k] === undefined ? "(removed)" : pretty(values[k]) }));
+    return el("details", { className: "key" + (isChanged ? " changed" : ""), open },
+      el("summary", { textContent: k + (isChanged ? (previous[k] === undefined ? "  · new" : "  · changed") : "") }), body);
+  };
+  const changedKeys = step.changed.filter((k) => !["usage", "tool_calls"].includes(k));
+  const others = Object.keys(values).filter((k) => !changed.has(k)).sort();
+
+  const head = el("section", { className: "panel" },
+    el("div", { className: "row between" },
+      el("h3", { style: "margin:0" }, el("span", { className: "muted", textContent: `Step #${step.step} · ` }),
+         el("span", { className: "mono", style: "font-size:14px", textContent: describe(step) })),
+      el("span", { className: "muted small", textContent: when(step.created_at) })),
+    el("p", { className: "muted small", style: "margin:6px 0 0", textContent:
+      step.ran[0] === "input" ? "The run's input, before any node ran."
+      : `State after ${step.ran.join(", ")} ran. ` + (step.next.length ? `Next: ${step.next.join(", ")}.` : "The run ended here.") }),
+    el("h2", { style: "margin-top:12px", textContent: `What this step changed (${step.changed.length})` }),
+    ...(step.changed.length ? step.changed.map((k) => keyBlock(k, changedKeys.includes(k) && step.changed.length <= 4))
+        : [el("p", { className: "empty", textContent: "Nothing." })]),
+    el("details", { style: "margin-top:12px" },
+      el("summary", { className: "muted", textContent: `Rest of the state (${others.length} keys)` }),
+      ...others.map((k) => keyBlock(k, false))));
+
+  $("main").replaceChildren(head, replayForm(step), replaysPanel());
+  loadReplays();
+}
+
+// ---------- replay form ----------
+function replayForm(step) {
+  const panel = el("section", { className: "panel" }, el("h2", { textContent: "Replay from this step" }));
+  if (!step.can_replay) {
+    panel.append(el("p", { className: "empty", textContent: step.next.length
+      ? "Pick a later step: this one is the run's raw input." : "Nothing runs after this step; pick an earlier one." }));
+    return panel;
+  }
+  const v = S.state.values;
+  const hasPlan = !!v.plan;
+  panel.append(el("p", { className: "muted small", style: "margin:0", textContent:
+    "Runs a new task from exactly this point, with any changes below. The original is untouched, " +
+    "the replay gets its own trace and review flow, and it never writes long-term memories. " +
+    (hasPlan ? "Edited fields are outlined." : "This step is before planning, so the replay plans again.") }));
+
+  const edited = (input, original) => {
+    input.oninput = () => input.classList.toggle("edited", input.value !== original);
+    return input;
+  };
+  const taskIn = edited(el("textarea", { rows: 2, value: v.task || "" }), v.task || "");
+  const guidanceIn = el("input", { type: "text", placeholder: "e.g. Only use official release notes; keep the table to 5 rows" });
+  const reviewIn = el("input", { type: "checkbox", checked: !!v.require_review });
+  const memIn = el("input", { type: "checkbox", checked: true });
+  const fields = [
+    el("label", { className: "field" }, el("span", { textContent: "Task" }), taskIn),
+    el("label", { className: "field" }, el("span", { textContent: "Guidance for every later specialist and reviewer (optional)" }), guidanceIn),
+  ];
+
+  const planText = hasPlan ? JSON.stringify(v.plan, null, 2) : "";
+  const planIn = hasPlan ? edited(el("textarea", { rows: 14, value: planText }), planText) : null;
+  const outputs = {};
+  if (hasPlan) {
+    fields.push(el("details", { className: "field" },
+      el("summary", { className: "muted", textContent: "Edit the plan (execution restarts from the edited plan)" }), planIn));
+    const results = v.results || {};
+    const ids = Object.keys(results);
+    if (ids.length) {
+      const box = el("details", { className: "field" },
+        el("summary", { className: "muted", textContent: `Edit subtask outputs (${ids.length}): later steps use your version` }));
+      for (const id of ids) {
+        const original = results[id].output || "";
+        const ta = edited(el("textarea", { rows: 5, value: original }), original);
+        outputs[id] = { ta, original };
+        const accepted = (v.accepted || {})[id];
+        box.append(el("label", { className: "field" },
+          el("span", { textContent: `${id} · ${accepted ? "accepted by " + accepted : "not accepted yet"}` }), ta));
+      }
+      fields.push(box);
+    }
+  }
+  fields.push(el("div", { className: "row", style: "margin-top:10px;gap:16px" },
+    el("label", { className: "check" }, reviewIn, "Pause for me to approve the plan and answer"),
+    hasPlan ? null : el("label", { className: "check" }, memIn, "Plan with the original's memories")));
+
+  const status = el("div", { className: "small", style: "margin-top:8px" });
+  const go = el("button", { className: "primary", textContent: "Replay from step #" + step.step });
+  go.onclick = async () => {
+    const changes = {};
+    if (taskIn.value.trim() && taskIn.value !== (v.task || "")) changes.task = taskIn.value.trim();
+    if (guidanceIn.value.trim()) changes.guidance = guidanceIn.value.trim();
+    if (reviewIn.checked !== !!v.require_review) changes.require_review = reviewIn.checked;
+    if (!hasPlan && !memIn.checked) changes.reuse_memories = false;
+    if (planIn && planIn.value !== planText) {
+      try { changes.plan = JSON.parse(planIn.value); }
+      catch (e) { status.replaceChildren(el("span", { className: "err", textContent: "Plan isn't valid JSON: " + e.message })); return; }
+    }
+    const outs = {};
+    for (const [id, { ta, original }] of Object.entries(outputs)) if (ta.value !== original) outs[id] = ta.value;
+    if (Object.keys(outs).length) changes.outputs = outs;
+    go.disabled = true;
+    status.replaceChildren(el("span", { className: "muted", textContent: "Starting replay…" }));
+    try {
+      const r = await api(`/tasks/${encodeURIComponent(S.taskId)}/replay`, {
+        method: "POST", body: JSON.stringify({ checkpoint_id: step.checkpoint_id, changes }) });
+      status.replaceChildren(el("span", { className: "muted", textContent: `Replay ${r.replay_id} started (continues after ${r.resumed_after}). ` }),
+        el("a", { href: "?compare=" + r.replay_id, textContent: "Compare" }));
+      loadReplays();
+      clearInterval(S.poll);
+      S.poll = setInterval(loadReplays, 3000);
+    } catch (e) {
+      status.replaceChildren(el("span", { className: "err", textContent: e.message }));
+    } finally { go.disabled = false; }
+  };
+  panel.append(...fields, el("div", { className: "row", style: "margin-top:12px" }, go), status);
+  return panel;
+}
+
+// ---------- replays of this task ----------
+function replaysPanel() {
+  return el("section", { className: "panel" }, el("h2", { textContent: "Replays of this task" }),
+    el("div", { id: "replays" }, el("p", { className: "empty", textContent: "Loading…" })));
+}
+
+async function loadReplays() {
+  const box = $("replays");
+  if (!box) return;
+  let list;
+  try { list = await api(`/tasks/${encodeURIComponent(S.taskId)}/replays`); }
+  catch (e) { box.replaceChildren(el("p", { className: "err", textContent: e.message })); return; }
+  if (!list.some((r) => ["queued", "running"].includes(r.status))) clearInterval(S.poll);
+  if (!list.length) { box.replaceChildren(el("p", { className: "empty", textContent: "None yet." })); return; }
+  box.replaceChildren(...list.map((r) => {
+    const changes = Object.keys(r.changes).length ? Object.entries(r.changes).map(([k, val]) =>
+      k === "outputs" ? `outputs of ${Object.keys(val).join(", ")}` : k === "plan" ? `new plan (${val.length} subtasks)`
+      : `${k}: ${typeof val === "string" ? val : JSON.stringify(val)}`).join(" · ") : "no changes";
+    return el("div", { className: "replayItem" },
+      el("div", { className: "row between" },
+        el("span", {}, chip(r.status, r.status), " ",
+          el("span", { className: "mono", textContent: r.id.slice(0, 12) }),
+          el("span", { className: "muted small", textContent: ` · from step #${r.step} · ${when(r.created_at)}` })),
+        el("span", { className: "row" },
+          r.status === "awaiting_review" ? el("a", { href: "/dashboard/reviews", textContent: "Review" }) : null,
+          el("a", { href: "/dashboard/traces?task=" + r.id, textContent: "Trace" }),
+          el("a", { href: "?compare=" + r.id, textContent: "Compare" }))),
+      el("div", { className: "small muted", textContent: changes }));
+  }));
+}
+
+// ---------- compare ----------
+async function openCompare(replayId) {
+  clearInterval(S.poll);
+  history.replaceState(null, "", "?compare=" + encodeURIComponent(replayId));
+  $("main").replaceChildren(el("section", { className: "panel" }, el("p", { className: "empty", textContent: "Loading comparison…" })));
+  let c;
+  try { c = await api(`/replays/${encodeURIComponent(replayId)}/compare`); }
+  catch (e) { $("main").replaceChildren(el("section", { className: "panel" }, el("p", { className: "err", textContent: e.message }))); return; }
+  // Keep the source run's steps on the left, with the fork step selected.
+  if (S.taskId !== c.replay.source_task_id) {
+    S.taskId = c.replay.source_task_id;
+    $("taskInput").value = S.taskId;
+    try {
+      [S.task, S.steps] = await Promise.all([api("/tasks/" + S.taskId), api(`/tasks/${S.taskId}/steps`)]);
+      $("taskInfo").replaceChildren(chip(S.task.status, S.task.status), " ", el("span", { textContent: S.task.task }));
+    } catch { S.steps = []; }
+  }
+  S.index = S.steps.findIndex((s) => s.checkpoint_id === c.replay.checkpoint_id);
+  renderSteps();
+  renderCompare(c);
+  if (["queued", "running"].includes(c.replayed.status))
+    S.poll = setTimeout(() => openCompare(replayId), 3000);
+}
+
+function renderCompare(c) {
+  const o = c.original, r = c.replayed;
+  const delta = (a, b, fmt, lowerIsBetter = true) => {
+    if (a == null || b == null) return el("td", { textContent: "" });
+    const d = b - a;
+    if (Math.abs(d) < 1e-9) return el("td", { className: "muted", textContent: "same" });
+    const good = lowerIsBetter ? d < 0 : d > 0;
+    return el("td", { className: good ? "better" : "worse", textContent: (d > 0 ? "+" : "−") + fmt(Math.abs(d)) });
+  };
+  const rows = [
+    ["Status", o.status, r.status, null],
+    ["Cost", o.cost_usd, r.cost_usd, money],
+    ["LLM calls", o.llm_calls, r.llm_calls, String],
+    ["Input tokens", o.input_tokens, r.input_tokens, tokens],
+    ["Output tokens", o.output_tokens, r.output_tokens, tokens],
+    ["Tool calls", o.tool_calls, r.tool_calls, String],
+    ["Agent time (s)", o.agent_seconds, r.agent_seconds, (x) => x.toFixed(1)],
+    ["Escalations", o.escalations, r.escalations, String],
+  ];
+  const table = el("table", { className: "cmp" },
+    el("thead", {}, el("tr", {}, ...["", "Original (after fork)", "Replay", "Change"].map((h) => el("th", { textContent: h })))),
+    el("tbody", {}, ...rows.map(([label, a, b, fmt]) => el("tr", {},
+      el("td", { textContent: label }),
+      el("td", { textContent: fmt ? fmt(a) : a ?? "–" }), el("td", { textContent: fmt ? fmt(b) : b ?? "–" }),
+      fmt ? delta(a, b, fmt) : el("td", { textContent: a === b ? "same" : "" })))));
+
+  const changes = Object.keys(c.replay.changes).length
+    ? el("pre", { textContent: JSON.stringify(c.replay.changes, null, 2) })
+    : el("p", { className: "muted", style: "margin:0", textContent: "No changes: a straight re-run from this step." });
+
+  const head = el("section", { className: "panel" },
+    el("div", { className: "row between" },
+      el("h3", { style: "margin:0", textContent: `Replay from step #${c.replay.step} (after ${c.replay.resumed_after})` }),
+      el("span", { className: "row small" },
+        el("a", { href: "/dashboard/traces?task=" + o.task_id, textContent: "Original trace" }),
+        el("a", { href: "/dashboard/traces?task=" + r.task_id, textContent: "Replay trace" }),
+        el("a", { href: "?task=" + o.task_id, textContent: "Steps" }))),
+    el("p", { className: "muted small", style: "margin:4px 0 10px", textContent:
+      "The original's numbers only count what ran after the fork point, so both columns cover the same stretch of work." }),
+    table,
+    o.memory_cost_usd > 0 && !r.memory_cost_usd ? el("p", { className: "muted small", style: "margin:6px 0 0", textContent:
+      `The original's numbers include saving long-term memories (${money(o.memory_cost_usd)}, 1 LLM call), ` +
+      "which replays skip by design." }) : null,
+    el("h2", { style: "margin-top:14px", textContent: "What was changed" }), changes);
+
+  const fo = c.final_output;
+  const outputs = el("section", { className: "panel" },
+    el("div", { className: "row between" }, el("h2", { style: "margin:0", textContent: "Final answer" }),
+      el("span", { className: "muted small", textContent: `similarity ${(fo.similarity * 100).toFixed(0)}%` })),
+    el("div", { className: "two", style: "margin-top:8px" },
+      el("div", {}, el("div", { className: "muted small", textContent: "Original" }), el("pre", { textContent: o.final_output || o.error || "(none)" })),
+      el("div", {}, el("div", { className: "muted small", textContent: "Replay" }), el("pre", { textContent: r.final_output || r.error || "(none yet)" }))),
+    fo.diff.length ? el("details", { style: "margin-top:10px" },
+      el("summary", { className: "muted", textContent: `Line diff (${fo.diff.filter((l) => /^[+-][^+-]/.test(l)).length} lines changed)` }),
+      el("div", { className: "diff" }, ...fo.diff.map((line) => el("div", {
+        className: line.startsWith("@@") || line.startsWith("---") || line.startsWith("+++") ? "h"
+          : line.startsWith("+") ? "a" : line.startsWith("-") ? "d" : "", textContent: line })))) : null);
+
+  const side = (x) => x ? `${x.attempts} attempt${x.attempts === 1 ? "" : "s"}` +
+    (x.quality != null ? ` · q ${x.quality.toFixed(2)}` : "") +
+    (x.accepted_by ? ` · by ${x.accepted_by}` : x.abandoned ? " · abandoned" : "") : "not in plan";
+  const subtasks = el("section", { className: "panel" }, el("h2", { textContent: "Subtasks" }),
+    el("table", { className: "cmp" },
+      el("thead", {}, el("tr", {}, ...["Subtask", "Original", "Replay", "Output similarity"].map((h) => el("th", { textContent: h })))),
+      el("tbody", {}, ...c.subtasks.map((s) => el("tr", {},
+        el("td", { className: "mono", textContent: s.id }),
+        el("td", { textContent: side(s.original) }), el("td", { textContent: side(s.replay) }),
+        el("td", { textContent: s.output_similarity == null ? "–" : (s.output_similarity * 100).toFixed(0) + "%" }))))),
+    ...c.subtasks.filter((s) => s.output_similarity != null && s.output_similarity < 1).map((s) =>
+      el("details", { style: "margin-top:8px" }, el("summary", { className: "muted", textContent: `${s.id}: outputs side by side` }),
+        el("div", { className: "two", style: "margin-top:6px" },
+          el("pre", { textContent: s.original.output }), el("pre", { textContent: s.replay.output })))));
+
+  $("main").replaceChildren(head, outputs, subtasks);
+}
+
+// ---------- wiring ----------
+$("openTask").onclick = () => openTask($("taskInput").value);
+$("taskInput").onkeydown = (ev) => { if (ev.key === "Enter") openTask($("taskInput").value); };
+$("prevStep").onclick = () => selectStep(S.index - 1);
+$("nextStep").onclick = () => selectStep(S.index + 1);
+document.addEventListener("keydown", (ev) => {
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (ev.key === "j" || ev.key === "ArrowDown") { ev.preventDefault(); selectStep(S.index + 1); }
+  if (ev.key === "k" || ev.key === "ArrowUp") { ev.preventDefault(); selectStep(S.index - 1); }
+});
+const params = new URLSearchParams(location.search);
+if (params.get("compare")) openCompare(params.get("compare"));
+else if (params.get("task")) openTask(params.get("task"));
+</script>
+</body>
+</html>

@@ -4,7 +4,7 @@
     {
       "name": "api",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "uvicorn", "agentorch.api.main:app", "--port", "8000"],
+      "runtimeArgs": ["run", "uvicorn", "tether.api.main:app", "--port", "8000"],
       "port": 8000
     }
   ]

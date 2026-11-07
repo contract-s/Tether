@@ -5,24 +5,24 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.schemas import ExecutionPlan
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.agents.supervisor import Supervisor
-from agentorch.api import observability as obs_api
-from agentorch.api import replay as replay_api
-from agentorch.api import tasks as tasks_api
-from agentorch.api.main import app
-from agentorch.graph.workflow import Agents, build_workflow
-from agentorch.hitl.service import TaskService
-from agentorch.hitl.store import HitlStore, make_engine
-from agentorch.memory.long_term_types import MemoryKind, StoredMemory
-from agentorch.memory.service import MemoryServices
-from agentorch.observability.llm_tracing import TracingLLM
-from agentorch.observability.store import SpanStore, to_record
-from agentorch.replay import ReplayChanges, ReplayError, ReplayService
-from agentorch.tools.registry import ToolRegistry
 from tests.unit.test_workflow import FakeLLM, make_plan
+from tether.agents.reviewer import Reviewer
+from tether.agents.schemas import ExecutionPlan
+from tether.agents.specialist import SpecialistAgent
+from tether.agents.supervisor import Supervisor
+from tether.api import observability as obs_api
+from tether.api import replay as replay_api
+from tether.api import tasks as tasks_api
+from tether.api.main import app
+from tether.graph.workflow import Agents, build_workflow
+from tether.hitl.service import TaskService
+from tether.hitl.store import HitlStore, make_engine
+from tether.memory.long_term_types import MemoryKind, StoredMemory
+from tether.memory.service import MemoryServices
+from tether.observability.llm_tracing import TracingLLM
+from tether.observability.store import SpanStore, to_record
+from tether.replay import ReplayChanges, ReplayError, ReplayService
+from tether.tools.registry import ToolRegistry
 
 MEMORY = StoredMemory(id="m1", user_id="u", kind=MemoryKind.PITFALL, text="check dates",
                       task_id="old", created_at=0, access_count=0, last_accessed_at=0)

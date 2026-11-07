@@ -4,16 +4,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 import tests.unit.test_hitl_graph as hitl
-from agentorch.api import observability as obs_api
-from agentorch.api.main import app
-from agentorch.hitl.escalation import Decision
-from agentorch.hitl.service import TaskService
-from agentorch.hitl.store import HitlStore, make_engine
-from agentorch.llm import LLMUsage
-from agentorch.observability import metrics
-from agentorch.observability.cost import llm_cost
-from agentorch.observability.llm_tracing import TracingLLM
-from agentorch.observability.store import SpanStore, to_record
+from tether.api import observability as obs_api
+from tether.api.main import app
+from tether.hitl.escalation import Decision
+from tether.hitl.service import TaskService
+from tether.hitl.store import HitlStore, make_engine
+from tether.llm import LLMUsage
+from tether.observability import metrics
+from tether.observability.cost import llm_cost
+from tether.observability.llm_tracing import TracingLLM
+from tether.observability.store import SpanStore, to_record
 
 
 def test_llm_cost() -> None:
@@ -65,7 +65,7 @@ def test_parallel_work_and_tools_nest_under_their_segment(traced_task) -> None:
 def test_pause_is_not_an_error_but_a_blocked_tool_is(traced_task) -> None:
     task_id, store, sent = traced_task
     spans = store.trace(task_id)
-    paused = [s for s in spans if s.attributes.get("agentorch.paused")]
+    paused = [s for s in spans if s.attributes.get("tether.paused")]
     assert paused and all(s.status == "ok" for s in paused)
 
     sends = [s for s in spans if s.name == "tool.send_email"]

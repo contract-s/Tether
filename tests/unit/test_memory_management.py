@@ -5,15 +5,15 @@ import chromadb
 import pytest
 from fastapi.testclient import TestClient
 
-from agentorch.api import memory as memory_api
-from agentorch.api.main import app
-from agentorch.llm import StructuredResult
-from agentorch.memory import scoring
-from agentorch.memory.consolidator import MemoryConsolidator, MergedMemory, group_similar
-from agentorch.memory.long_term import LongTermMemory
-from agentorch.memory.long_term_types import MemoryItem, MemoryKind, StoredMemory
 from tests.unit.test_memory import BagOfWordsEmbedder
 from tests.unit.test_workflow import USAGE
+from tether.api import memory as memory_api
+from tether.api.main import app
+from tether.llm import StructuredResult
+from tether.memory import scoring
+from tether.memory.consolidator import MemoryConsolidator, MergedMemory, group_similar
+from tether.memory.long_term import LongTermMemory
+from tether.memory.long_term_types import MemoryItem, MemoryKind, StoredMemory
 
 DAY = scoring.DAY
 
@@ -164,6 +164,6 @@ def test_api_consolidate_and_expire(client, store) -> None:
 
 def test_dashboard_is_served(client) -> None:
     page = client.get("/dashboard/memories")
-    assert page.status_code == 200 and "What AgentOrch remembers" in page.text
+    assert page.status_code == 200 and "What Tether remembers" in page.text
     # Memory text must never be inserted as HTML.
     assert "innerHTML" not in page.text

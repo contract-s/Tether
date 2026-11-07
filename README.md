@@ -1,15 +1,17 @@
-# AgentOrch
+# Tether
 
-**A multi-agent orchestration system with tool use, persistent memory, and human-in-the-loop review.**
+**Multi-agent orchestration with a human on the line.** Agents plan, use tools, check
+each other's work and learn from past tasks, while staying tethered to a person who
+approves what matters.
 
 ![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![Claude](https://img.shields.io/badge/Claude-Opus%205.5%20%2B%20Sonnet%205.5-D97757)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?logo=docker&logoColor=white)
-[![CI](https://github.com/contract-s/AgentOrch/actions/workflows/ci.yml/badge.svg)](https://github.com/contract-s/AgentOrch/actions/workflows/ci.yml)
+[![CI](https://github.com/contract-s/Tether/actions/workflows/ci.yml/badge.svg)](https://github.com/contract-s/Tether/actions/workflows/ci.yml)
 
-You give AgentOrch a task in plain language. A **supervisor agent** turns it into a plan
+You give Tether a task in plain language. A **supervisor agent** turns it into a plan
 of subtasks, **specialist agents** carry out the subtasks with real tools, and a
 **reviewer agent** checks every result before it is used. The system **remembers** what
 worked for the next task, **stops for a human** when confidence is low or an action is
@@ -118,21 +120,21 @@ inputs and outputs. The screenshot is at the top of this page.
 see what each step changed. Fork from any step with edits, then compare the replay with
 the original: cost, calls, time, outputs, and a diff of the final answer.
 
-![Replay comparison: the replay cost $0.026 against $0.043, with the edit and the final answers side by side](docs/images/replay.png)
+![Replay comparison: the replay cost $0.17 against $0.20 for the same stretch of the original, with the edited output shown](docs/images/replay.png)
 
 **Memory** (`/dashboard/memories`). Everything the system remembers about each user,
 ranked by importance, with usage counts. From here you can merge near-duplicates,
 expire stale memories, and delete individual memories or everything for a user.
 
-![Memory dashboard listing pitfalls, tool usage and approaches with importance scores](docs/images/memory.png)
+![Memory dashboard listing the preference, pitfalls and approach learned from the showcase run, with importance scores](docs/images/memory.png)
 
 ## Quick start
 
 You need Docker and an [Anthropic API key](https://console.anthropic.com/).
 
 ```bash
-git clone https://github.com/contract-s/AgentOrch.git
-cd AgentOrch
+git clone https://github.com/contract-s/Tether.git
+cd Tether
 cp .env.example .env    # then set ANTHROPIC_API_KEY
 make stack              # builds and starts the API, worker, Postgres, Redis, ChromaDB, Jaeger
 ```
@@ -148,7 +150,7 @@ uv run python scripts/demo.py --review       # you approve the plan and the fina
 
 The demo task compares object-storage costs on AWS, Google Cloud and Azure. It runs
 research, then extraction into a CSV, then analysis with code, then a summary. It takes
-about 4–5 minutes and costs about $1.10.
+about 5 minutes and costs about $1.
 
 ### Local development
 
@@ -217,23 +219,29 @@ make e2e-live    # plus 5 tests against Claude (about $0.75)
 
 ## Results
 
-The showcase run on the full Docker stack:
+Two completed showcase runs on the full Docker stack:
 
-| | |
-|---|---|
-| Outcome | Done. 4 subtasks: research → CSV extraction → calculation in code → summary |
-| Time | 275 s |
-| Cost | $1.10: specialists $0.41, web search $0.34, reviewer $0.19, supervisor $0.15, memory $0.02 |
-| Model calls | 29 (352k input and 27k output tokens), plus 21 tool calls |
-| Human reviews | 2. Research failed review twice; writing the CSV file needed approval |
+| | Run 1 | Run 2 (the screenshots) |
+|---|---|---|
+| Outcome | Done, all 4 subtasks | Done, all 4 subtasks |
+| Time | 275 s | 293 s |
+| Cost | $1.10 | $0.84 |
+| Model calls | 29 (352k in / 27k out tokens) | 28 (226k in / 26k out tokens) |
+| Tool calls | 21 | 16 |
+| Human reviews | 2: research failed review twice; the CSV write needed approval | 2: the CSV write needed approval; the summary failed review twice |
 
-The answer was honest about its sources. AWS's and Google's pricing pages load their
-prices with JavaScript, so the agents couldn't read them. The answer marks those two
-providers' prices as unverified third-party figures. Azure's came from Microsoft's
-official price API.
+In run 2, the money went to specialists ($0.31), web search ($0.20), the reviewer
+($0.16), the supervisor ($0.15) and memory ($0.02).
 
-Replays are cheap. Forking a finished run just before its last subtask, with one output
-edited, cost $0.026, against $0.043 for the same steps in the original.
+**The answers were honest about their sources.** The providers' pricing pages load their
+prices with JavaScript, so the agents couldn't read them. Both answers say so up front,
+mark the third-party figures as unverified, and name the official price APIs to check
+against. Both also caught that Google Cloud's egress rate only covers the first 1 TB, and
+worked out what the tiered price would do to the ranking.
+
+**Replays only pay for what runs after the fork.** Forking run 2 after its calculation
+subtask, with that subtask's output edited, re-ran the summary and the final answer for
+$0.17. The original spent $0.20 on the same stretch, because its summary needed a retry.
 
 ## Challenges and what I learned
 
@@ -247,7 +255,7 @@ showed exactly where the money went. **The fix:**
 - tool results are cut at 12,000 characters;
 - the agents are told to prefer focused searches over raw data.
 
-The finished run then cost $1.10. **Lesson:** agent loops need budgets, not only turn
+The finished runs then cost $0.84–$1.10. **Lesson:** agent loops need budgets, not only turn
 limits.
 
 **Making the reviewer useful, not just strict.** Early reviewers rejected good work for
@@ -315,7 +323,7 @@ memories the original had planned with. They now come from the original's final 
 ## Project layout
 
 ```
-src/agentorch/
+src/tether/
   agents/          supervisor, specialists, reviewer, plan validation
   graph/           LangGraph workflow and wiring
   tools/           tool registry and the built-in tools

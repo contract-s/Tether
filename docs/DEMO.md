@@ -24,7 +24,7 @@ for the edited video.
 
 **0:00 – 0:30 · What it is.** Open on the architecture diagram in
 `docs/ARCHITECTURE.md`.
-> "AgentOrch takes a task, has a supervisor agent plan it, runs the plan with specialist
+> "Tether takes a task, has a supervisor agent plan it, runs the plan with specialist
 > agents that use tools, checks every result with a reviewer, and asks a human when it
 > should. It remembers what it learns, and every step is traced and replayable."
 

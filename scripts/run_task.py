@@ -10,7 +10,7 @@ import uuid
 
 from langgraph.types import Command
 
-from agentorch.graph.factory import default_workflow
+from tether.graph.factory import default_workflow
 
 parser = argparse.ArgumentParser()
 parser.add_argument("task", nargs="+")

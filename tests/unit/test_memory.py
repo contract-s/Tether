@@ -6,11 +6,11 @@ import chromadb
 import fakeredis
 import pytest
 
-from agentorch.agents.schemas import Specialist
-from agentorch.memory.long_term import LongTermMemory, MemoryItem, MemoryKind
-from agentorch.memory.working import WorkingMemory
-from agentorch.tools.defaults import build_default_registry
-from agentorch.tools.registry import ToolContext
+from tether.agents.schemas import Specialist
+from tether.memory.long_term import LongTermMemory, MemoryItem, MemoryKind
+from tether.memory.working import WorkingMemory
+from tether.tools.defaults import build_default_registry
+from tether.tools.registry import ToolContext
 
 
 class BagOfWordsEmbedder:
@@ -52,7 +52,7 @@ def test_working_memory_round_trip_and_clear(redis_client) -> None:
     assert snap["plan"] == {"goal": "g"} and snap["results"] == {"t1": "out 1"}
     assert snap["notes"][0]["text"] == "Qdrant is at v1.20.0"
     assert snap["errors"][0]["source"] == "t2#1"
-    assert 0 < redis_client.ttl("agentorch:wm:task-1:notes") <= 24 * 3600
+    assert 0 < redis_client.ttl("tether:wm:task-1:notes") <= 24 * 3600
 
     wm.clear()
     assert WorkingMemory(redis_client, "task-1").snapshot() == {

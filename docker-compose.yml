@@ -4,14 +4,16 @@
 # For local development, `make up` starts only the infrastructure and `make api`
 # runs the API on your machine against it.
 
+name: tether
+
 x-app: &app
   build: .
-  image: agentorch:latest
+  image: tether:latest
   env_file:
     - path: .env # ANTHROPIC_API_KEY and any overrides
       required: false
   environment: &app-env
-    DATABASE_URL: postgresql+psycopg://agentorch:agentorch@postgres:5432/agentorch
+    DATABASE_URL: postgresql+psycopg://tether:tether@postgres:5432/tether
     REDIS_URL: redis://redis:6379/0
     CHROMA_HOST: chromadb
     CHROMA_PORT: "8000"
@@ -38,7 +40,7 @@ services:
 
   worker:
     <<: *app
-    command: ["celery", "-A", "agentorch.workers", "worker", "--loglevel=info", "--concurrency=4"]
+    command: ["celery", "-A", "tether.workers", "worker", "--loglevel=info", "--concurrency=4"]
     # code_exec starts throwaway sandbox containers, so the worker talks to the host's
     # Docker. Access to the socket is root-equivalent on the host: the worker runs as root
     # and is the only service that gets it. The sandboxes themselves are locked down.
@@ -51,13 +53,13 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: agentorch
-      POSTGRES_PASSWORD: agentorch
-      POSTGRES_DB: agentorch
+      POSTGRES_USER: tether
+      POSTGRES_PASSWORD: tether
+      POSTGRES_DB: tether
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentorch"]
+      test: ["CMD-SHELL", "pg_isready -U tether"]
       interval: 5s
       retries: 10
 

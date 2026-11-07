@@ -1,4 +1,4 @@
-"""With the real model: do the agents behave? (AGENTORCH_LIVE=1, costs roughly $0.75.)
+"""With the real model: do the agents behave? (TETHER_LIVE=1, costs roughly $0.75.)
 
 Assertions are about behaviour that should hold on any good run, not exact wording.
 """
@@ -7,17 +7,17 @@ from __future__ import annotations
 
 import pytest
 
-from agentorch.agents.planning import validate_plan
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.schemas import Specialist, Subtask, SubtaskResult
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.agents.supervisor import Supervisor
-from agentorch.config import settings
-from agentorch.llm import AnthropicClient
-from agentorch.memory.extractor import MemoryExtractor
-from agentorch.memory.long_term_types import MemoryKind
-from agentorch.tools.defaults import build_default_registry
 from scripts.demo import TASK as DEMO_TASK
+from tether.agents.planning import validate_plan
+from tether.agents.reviewer import Reviewer
+from tether.agents.schemas import Specialist, Subtask, SubtaskResult
+from tether.agents.specialist import SpecialistAgent
+from tether.agents.supervisor import Supervisor
+from tether.config import settings
+from tether.llm import AnthropicClient
+from tether.memory.extractor import MemoryExtractor
+from tether.memory.long_term_types import MemoryKind
+from tether.tools.defaults import build_default_registry
 
 pytestmark = pytest.mark.live
 

@@ -1,9 +1,9 @@
 import pytest
 from pydantic import BaseModel
 
-from agentorch.agents.schemas import Specialist as S
-from agentorch.tools.defaults import build_default_registry
-from agentorch.tools.registry import (
+from tether.agents.schemas import Specialist as S
+from tether.tools.defaults import build_default_registry
+from tether.tools.registry import (
     ApprovalRequiredError,
     RateLimit,
     RateLimitExceededError,

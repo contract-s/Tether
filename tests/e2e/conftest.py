@@ -3,7 +3,7 @@
     make up && make e2e          # scripted model, no API cost
     make e2e-live                # also the tests that call Claude
 
-Tests use their own database (agentorch_e2e) and Chroma collection, so they don't mix
+Tests use their own database (tether_e2e) and Chroma collection, so they don't mix
 with tasks in the dashboards. Everything is skipped when the infrastructure isn't up.
 """
 
@@ -23,29 +23,29 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from sqlalchemy import create_engine, text
 
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.agents.supervisor import Supervisor
-from agentorch.api import memory as memory_api
-from agentorch.api import observability as obs_api
-from agentorch.api import tasks as tasks_api
-from agentorch.api.main import app
-from agentorch.config import settings
-from agentorch.graph.factory import postgres_checkpointer
-from agentorch.graph.workflow import Agents, build_workflow
-from agentorch.hitl.service import TaskService
-from agentorch.hitl.store import HitlStore, make_engine
-from agentorch.llm import LLMClient
-from agentorch.memory.extractor import MemoryExtractor
-from agentorch.memory.long_term import ChromaDefaultEmbedder, LongTermMemory
-from agentorch.memory.service import MemoryServices
-from agentorch.memory.working import WorkingMemory
-from agentorch.observability.llm_tracing import TracingLLM
-from agentorch.observability.store import SpanStore, SpanStoreExporter
-from agentorch.tools.registry import ToolRegistry
+from tether.agents.reviewer import Reviewer
+from tether.agents.specialist import SpecialistAgent
+from tether.agents.supervisor import Supervisor
+from tether.api import memory as memory_api
+from tether.api import observability as obs_api
+from tether.api import tasks as tasks_api
+from tether.api.main import app
+from tether.config import settings
+from tether.graph.factory import postgres_checkpointer
+from tether.graph.workflow import Agents, build_workflow
+from tether.hitl.service import TaskService
+from tether.hitl.store import HitlStore, make_engine
+from tether.llm import LLMClient
+from tether.memory.extractor import MemoryExtractor
+from tether.memory.long_term import ChromaDefaultEmbedder, LongTermMemory
+from tether.memory.service import MemoryServices
+from tether.memory.working import WorkingMemory
+from tether.observability.llm_tracing import TracingLLM
+from tether.observability.store import SpanStore, SpanStoreExporter
+from tether.tools.registry import ToolRegistry
 
-E2E_DB = "agentorch_e2e"
-COLLECTION = "agentorch_e2e"
+E2E_DB = "tether_e2e"
+COLLECTION = "tether_e2e"
 
 
 def _infra_error() -> str | None:
@@ -67,17 +67,17 @@ def pytest_collection_modifyitems(config, items) -> None:
     if not e2e:
         return
     if error := _infra_error():
-        if os.environ.get("AGENTORCH_REQUIRE_INFRA") == "1":  # CI: missing services is a failure
+        if os.environ.get("TETHER_REQUIRE_INFRA") == "1":  # CI: missing services is a failure
             raise pytest.UsageError(f"end-to-end infrastructure not reachable: {error}")
         skip = pytest.mark.skip(reason=f"infrastructure not running (make up): {error}")
         for item in e2e:
             item.add_marker(skip)
         return
-    live_ok = os.environ.get("AGENTORCH_LIVE") == "1" and settings.anthropic_api_key
+    live_ok = os.environ.get("TETHER_LIVE") == "1" and settings.anthropic_api_key
     for item in e2e:
         if "live" in item.keywords and not live_ok:
             item.add_marker(pytest.mark.skip(
-                reason="calls Claude: set AGENTORCH_LIVE=1 and ANTHROPIC_API_KEY"))
+                reason="calls Claude: set TETHER_LIVE=1 and ANTHROPIC_API_KEY"))
 
 
 @pytest.fixture(scope="session")

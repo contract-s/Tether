@@ -9,14 +9,14 @@ import pytest
 from langgraph.types import Command
 from pydantic import BaseModel
 
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.schemas import ExecutionPlan, ReviewVerdict, Specialist
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.agents.supervisor import Supervisor
-from agentorch.graph.workflow import Agents, build_workflow
-from agentorch.llm import LLMUsage, ModelTurn, StructuredResult, ToolCall
-from agentorch.tools.registry import Tool, ToolRegistry
 from tests.unit.test_workflow import make_plan
+from tether.agents.reviewer import Reviewer
+from tether.agents.schemas import ExecutionPlan, ReviewVerdict, Specialist
+from tether.agents.specialist import SpecialistAgent
+from tether.agents.supervisor import Supervisor
+from tether.graph.workflow import Agents, build_workflow
+from tether.llm import LLMUsage, ModelTurn, StructuredResult, ToolCall
+from tether.tools.registry import Tool, ToolRegistry
 
 USAGE = LLMUsage("fake", 1, 1)
 

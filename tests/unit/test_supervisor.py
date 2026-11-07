@@ -3,10 +3,10 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from agentorch.agents.planning import InvalidPlanError
-from agentorch.agents.schemas import ExecutionPlan
-from agentorch.agents.supervisor import Supervisor
-from agentorch.llm import LLMUsage, Role, StructuredResult
+from tether.agents.planning import InvalidPlanError
+from tether.agents.schemas import ExecutionPlan
+from tether.agents.supervisor import Supervisor
+from tether.llm import LLMUsage, Role, StructuredResult
 
 
 def make_plan(subtasks: list[dict[str, Any]]) -> ExecutionPlan:

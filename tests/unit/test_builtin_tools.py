@@ -6,10 +6,10 @@ import httpx
 import pytest
 from sqlalchemy import create_engine, text
 
-from agentorch.tools.code_exec import CodeExecInput, DockerSandbox
-from agentorch.tools.db_query import DbQueryInput, ReadOnlyDatabase
-from agentorch.tools.files import FileReadInput, FileWriteInput, Workspace
-from agentorch.tools.http import HttpClient, HttpRequestInput, is_sensitive
+from tether.tools.code_exec import CodeExecInput, DockerSandbox
+from tether.tools.db_query import DbQueryInput, ReadOnlyDatabase
+from tether.tools.files import FileReadInput, FileWriteInput, Workspace
+from tether.tools.http import HttpClient, HttpRequestInput, is_sensitive
 
 # --- files ---------------------------------------------------------------
 

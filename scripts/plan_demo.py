@@ -5,8 +5,8 @@
 
 import sys
 
-from agentorch.agents.supervisor import Supervisor
-from agentorch.llm import AnthropicClient
+from tether.agents.supervisor import Supervisor
+from tether.llm import AnthropicClient
 
 task = " ".join(sys.argv[1:]) or (
     "Research the three most popular open-source vector databases, compare their "

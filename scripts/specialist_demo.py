@@ -6,11 +6,11 @@
 
 import sys
 
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.schemas import Complexity, Specialist, Subtask
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.llm import AnthropicClient
-from agentorch.tools.defaults import build_default_registry
+from tether.agents.reviewer import Reviewer
+from tether.agents.schemas import Complexity, Specialist, Subtask
+from tether.agents.specialist import SpecialistAgent
+from tether.llm import AnthropicClient
+from tether.tools.defaults import build_default_registry
 
 SUBTASKS = {
     "research": Subtask(

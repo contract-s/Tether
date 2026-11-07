@@ -1,7 +1,7 @@
 import pytest
 
-from agentorch.agents.planning import InvalidPlanError, validate_plan
-from agentorch.agents.schemas import Complexity, ExecutionPlan, Specialist, Subtask
+from tether.agents.planning import InvalidPlanError, validate_plan
+from tether.agents.schemas import Complexity, ExecutionPlan, Specialist, Subtask
 
 
 def st(id: str, *deps: str, specialist: Specialist = Specialist.RESEARCH) -> Subtask:

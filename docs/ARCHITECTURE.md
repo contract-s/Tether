@@ -1,6 +1,6 @@
-# AgentOrch architecture
+# Tether architecture
 
-AgentOrch takes a task in plain language, has a supervisor agent break it into a plan of
+Tether takes a task in plain language, has a supervisor agent break it into a plan of
 subtasks, runs those subtasks with specialist agents that use tools, checks each result
 with a reviewer agent, and writes a final answer. Along the way it remembers what it
 learned for next time, stops for a human when it should, and records every step so a run
@@ -222,15 +222,17 @@ providers, put them in a CSV, compute monthly bills with code, and write a summa
 |---|---|---|---|---|
 | Before any spending limits | Stopped by hand, still on research | $2.71 | 21 | over 10 min |
 | With the budget and the 12k result cap | Done, all 4 subtasks | $1.10 | 29 | 275 s |
+| The same, rerun later | Done, all 4 subtasks | $0.84 | 28 | 293 s |
 
 The first run's research specialist paged through AWS's multi-megabyte price list with
 22 HTTP requests. Each turn sent all earlier results back to the model, so the input
 grew every turn. The finished run spent its money as follows: specialists $0.41, web
 search $0.34, reviewer $0.19, supervisor $0.15, memory $0.02.
 
-Replays only pay for what runs after the fork. Forking a finished run at its last
-subtask, with one output edited, cost $0.026. The original spent $0.043 on the same
-steps, $0.014 of it on saving memories, which replays skip.
+Replays only pay for what runs after the fork. Forking the $0.84 run after its
+calculation subtask, with that output edited, re-ran the summary and the final answer
+for $0.17. The original spent $0.20 on the same stretch: its summary needed a retry, and
+it saved memories ($0.02), which replays skip.
 
 ## Testing
 

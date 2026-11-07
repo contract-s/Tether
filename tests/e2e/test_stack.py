@@ -10,10 +10,10 @@ import uuid
 
 import pytest
 
-from agentorch.memory.long_term_types import MemoryKind
 from tests.unit.test_recovery import CrashingLLM
 from tests.unit.test_workflow import make_plan
 from tests.unit.test_workflow_memory import MemoryAwareLLM
+from tether.memory.long_term_types import MemoryKind
 
 
 def scripted(confidence: float = 0.9) -> MemoryAwareLLM:
@@ -30,7 +30,7 @@ def test_a_task_runs_end_to_end_and_its_record_survives_a_restart(make_stack, us
     assert task["status"] == "done" and task["final_output"] == "FINAL ANSWER"
     assert {p["status"] for p in task["progress"].values()} == {"done"}
     # Working memory was used during the run and cleared after it.
-    assert not list(stack.redis.scan_iter(f"agentorch:wm:{tid}:*"))
+    assert not list(stack.redis.scan_iter(f"tether:wm:{tid}:*"))
 
     # A new process reads the same run back from Postgres.
     stack.use(stack.new_service())
@@ -95,7 +95,7 @@ def celery_worker(make_stack, monkeypatch):
     worker can't take these messages)."""
     from celery.contrib.testing.worker import start_worker
 
-    import agentorch.workers as workers
+    import tether.workers as workers
 
     queue = f"e2e-{uuid.uuid4().hex[:8]}"
     stack = make_stack(scripted())

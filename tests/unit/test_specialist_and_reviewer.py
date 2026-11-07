@@ -2,17 +2,17 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from agentorch.agents.reviewer import Reviewer
-from agentorch.agents.schemas import (
+from tether.agents.reviewer import Reviewer
+from tether.agents.schemas import (
     Complexity,
     ReviewVerdict,
     Specialist,
     Subtask,
     SubtaskResult,
 )
-from agentorch.agents.specialist import SpecialistAgent
-from agentorch.llm import LLMUsage, ModelTurn, Role, StructuredResult, ToolCall
-from agentorch.tools.registry import Tool, ToolRegistry
+from tether.agents.specialist import SpecialistAgent
+from tether.llm import LLMUsage, ModelTurn, Role, StructuredResult, ToolCall
+from tether.tools.registry import Tool, ToolRegistry
 
 USAGE = LLMUsage("fake", 1, 1)
 
@@ -201,8 +201,8 @@ def test_suggestions_alone_do_not_block() -> None:
 def test_reviewer_evidence_matches_what_the_specialist_saw() -> None:
     from datetime import UTC, datetime
 
-    from agentorch.agents import reviewer as rv
-    from agentorch.tools.registry import ToolCallRecord
+    from tether.agents import reviewer as rv
+    from tether.tools.registry import ToolCallRecord
 
     def record(size: int) -> ToolCallRecord:
         return ToolCallRecord(

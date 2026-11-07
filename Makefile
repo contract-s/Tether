@@ -15,10 +15,10 @@ down:
 	docker compose down
 
 api:
-	uv run uvicorn agentorch.api.main:app --reload
+	uv run uvicorn tether.api.main:app --reload
 
 worker:
-	TASK_RUNNER=celery uv run celery -A agentorch.workers worker --loglevel=info
+	TASK_RUNNER=celery uv run celery -A tether.workers worker --loglevel=info
 
 test:
 	uv run pytest tests/unit
@@ -29,7 +29,7 @@ e2e:
 
 # Also the tests that call Claude (costs a little; needs ANTHROPIC_API_KEY)
 e2e-live:
-	AGENTORCH_LIVE=1 uv run pytest tests/e2e -v
+	TETHER_LIVE=1 uv run pytest tests/e2e -v
 
 demo:
 	uv run python scripts/demo.py

@@ -3,13 +3,13 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from agentorch.api import tasks as tasks_api
-from agentorch.api.main import app
-from agentorch.hitl.assistant import MAX_OUTPUT_CHARS, ReviewAssistant, format_context
-from agentorch.hitl.service import TaskService
-from agentorch.hitl.store import HitlStore, make_engine
-from agentorch.llm import LLMUsage, ModelTurn
 from tests.unit.test_hitl_graph import ActionLLM, make_graph
+from tether.api import tasks as tasks_api
+from tether.api.main import app
+from tether.hitl.assistant import MAX_OUTPUT_CHARS, ReviewAssistant, format_context
+from tether.hitl.service import TaskService
+from tether.hitl.store import HitlStore, make_engine
+from tether.llm import LLMUsage, ModelTurn
 
 
 class ExplainerLLM(ActionLLM):
