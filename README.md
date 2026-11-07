@@ -7,7 +7,7 @@
 ![Claude](https://img.shields.io/badge/Claude-Opus%205.5%20%2B%20Sonnet%205.5-D97757)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-149-brightgreen)
+[![CI](https://github.com/contract-s/AgentOrch/actions/workflows/ci.yml/badge.svg)](https://github.com/contract-s/AgentOrch/actions/workflows/ci.yml)
 
 You give AgentOrch a task in plain language. A **supervisor agent** turns it into a plan
 of subtasks, **specialist agents** carry out the subtasks with real tools, and a

@@ -5,13 +5,68 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  unit:
+    name: Lint and unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-      - run: uv python install 3.11
-      - run: uv sync --group dev
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.7"
+          python-version: "3.11"
+          enable-cache: true
+      - run: uv sync --group dev --frozen
       - run: uv run ruff check .
-      - run: uv run pytest
+      - run: uv run pytest tests/unit -q
+
+  e2e:
+    name: End-to-end tests (scripted model)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: agentorch
+          POSTGRES_PASSWORD: agentorch
+          POSTGRES_DB: agentorch
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentorch" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+      chromadb:
+        image: chromadb/chroma:1.5.9
+        ports: ["8001:8000"]
+    env:
+      AGENTORCH_REQUIRE_INFRA: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.7"
+          python-version: "3.11"
+          enable-cache: true
+      - run: uv sync --group dev --frozen
+      - name: Wait for ChromaDB
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8001/api/v2/heartbeat && exit 0
+            sleep 2
+          done
+          echo "ChromaDB did not start" && exit 1
+      - run: uv run pytest tests/e2e -v
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t agentorch:ci .

@@ -67,6 +67,8 @@ def pytest_collection_modifyitems(config, items) -> None:
     if not e2e:
         return
     if error := _infra_error():
+        if os.environ.get("AGENTORCH_REQUIRE_INFRA") == "1":  # CI: missing services is a failure
+            raise pytest.UsageError(f"end-to-end infrastructure not reachable: {error}")
         skip = pytest.mark.skip(reason=f"infrastructure not running (make up): {error}")
         for item in e2e:
             item.add_marker(skip)
