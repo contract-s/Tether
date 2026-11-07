@@ -55,7 +55,7 @@ subtasks complete.
   input and output.
 - Open one LLM span and expand the full prompt and response.
 - Use the cost-by-agent table: specialists and web search are most of the cost.
-- Mention: "A first version of this demo spent $2.48 on research and never finished.
+- Mention: "A first version of this demo spent $2.71 on research and never finished.
   The trace showed why: the agent was paging through AWS's raw price list. So each
   specialist attempt now has a spending limit."
 

@@ -220,7 +220,7 @@ providers, put them in a CSV, compute monthly bills with code, and write a summa
 
 | Run | Result | Cost | Model calls | Time |
 |---|---|---|---|---|
-| Before any spending limits | Stopped by hand, still on research | $2.48 | 20 | over 10 min |
+| Before any spending limits | Stopped by hand, still on research | $2.71 | 21 | over 10 min |
 | With the budget and the 12k result cap | Done, all 4 subtasks | $1.10 | 29 | 275 s |
 
 The first run's research specialist paged through AWS's multi-megabyte price list with
