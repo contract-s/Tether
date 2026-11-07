@@ -10,6 +10,7 @@ approves what matters.
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?logo=docker&logoColor=white)
 [![CI](https://github.com/contract-s/Tether/actions/workflows/ci.yml/badge.svg)](https://github.com/contract-s/Tether/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 You give Tether a task in plain language. A **supervisor agent** turns it into a plan
 of subtasks, **specialist agents** carry out the subtasks with real tools, and a
@@ -361,3 +362,5 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for how the build progressed, phase by ph
 **Sai Siddharth Kodali**
 
 Built with the help of [Claude Code](https://claude.com/claude-code).
+
+Licensed under the [MIT License](LICENSE).

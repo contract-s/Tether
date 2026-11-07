@@ -3,6 +3,7 @@ name = "tether"
 version = "0.1.0"
 description = "Multi-agent orchestration system with tool use, persistent memory, and human-in-the-loop escalation."
 readme = "README.md"
+license = "MIT"
 authors = [{ name = "Sai Siddharth Kodali" }]
 requires-python = ">=3.11"
 dependencies = [
