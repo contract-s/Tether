@@ -16,9 +16,6 @@ worked for the next task, **stops for a human** when confidence is low or an act
 risky, and **records every step**, so any run can be inspected, costed and replayed with
 changes.
 
-Built as Project 15 of the BASWE AI Engineering Projects guide: *Agent Orchestration
-System with Tool Use, Memory, and Human-in-the-Loop*.
-
 ![Trace explorer showing a finished run's cost, timeline and span tree](docs/images/traces.png)
 
 ## Contents
@@ -35,6 +32,7 @@ System with Tool Use, Memory, and Human-in-the-Loop*.
 - [Limitations and next steps](#limitations-and-next-steps)
 - [Project layout](#project-layout)
 - [Tech stack](#tech-stack)
+- [Author](#author)
 
 ## What it does
 
@@ -349,3 +347,7 @@ docs/              architecture, demo video script, roadmap
 | Quality | pytest, ruff |
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for how the build progressed, phase by phase.
+
+## Author
+
+**Sai Siddharth Kodali**
